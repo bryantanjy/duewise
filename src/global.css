@@ -6,13 +6,17 @@
   --color-app-surface: #FFFFFF;
 
   --color-app-text: #171717;
-  --color-app-muted: #737373;
+  --color-app-muted: #73736E;
 
-  --color-app-border: #E8E8E5;
+  --color-app-border: #E4E4DF;
 
   --color-app-primary: #635BFF;
+  --color-app-primary-soft: #EFEDFF;
 
   --color-app-danger: #D84A4A;
-  --color-app-warning: #D99132;
-  --color-app-success: #4F8A63;
+  --color-app-danger-soft: #FFF0F0;
+  --color-app-warning: #B87518;
+  --color-app-warning-soft: #FFF6E8;
+  --color-app-success: #3F7D55;
+  --color-app-success-soft: #EDF7F0;
 }

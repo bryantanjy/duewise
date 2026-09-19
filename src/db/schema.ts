@@ -7,7 +7,7 @@ import {
 export const categories = sqliteTable('categories', {
   id: integer('id').primaryKey({ autoIncrement: true }),
 
-  name: text('name').notNull(),
+  name: text('name').notNull().unique(),
   icon: text('icon'),
   color: text('color'),
 
@@ -88,6 +88,16 @@ export const itemHistory = sqliteTable('item_history', {
 
   action: text('action').notNull(),
 
+  createdAt: text('created_at')
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
+});
+
+export const notificationCleanup = sqliteTable('notification_cleanup', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  notificationId: text('notification_id').notNull().unique(),
+  attempts: integer('attempts').notNull().default(0),
+  lastError: text('last_error'),
   createdAt: text('created_at')
     .notNull()
     .$defaultFn(() => new Date().toISOString()),
