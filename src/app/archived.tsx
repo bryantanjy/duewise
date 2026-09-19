@@ -14,6 +14,7 @@ import { categories, items, reminders } from '@/db/schema';
 import { deleteItem, restoreItem } from '@/services/items';
 import { buildArchivedItemModel } from '@/utils/archived-item-model';
 import { formatDateForDisplay } from '@/utils/item-form';
+import { useTheme } from '@/hooks/use-theme';
 
 const archivedItemsQuery = db
   .select({
@@ -42,6 +43,7 @@ const archivedItemsQuery = db
   .orderBy(desc(items.updatedAt));
 
 export default function ArchivedItemsScreen() {
+  const colors = useTheme();
   const { data, error } = useLiveQuery(archivedItemsQuery);
   const models = useMemo(() => data.map(buildArchivedItemModel), [data]);
   const [activeItemId, setActiveItemId] = useState<number>();
@@ -101,14 +103,14 @@ export default function ArchivedItemsScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-app-bg" edges={['top', 'bottom']}>
+    <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: colors.background }}>
       <View className="flex-row items-center justify-between px-4 py-2">
         <Pressable
           accessibilityLabel="Back to settings"
           accessibilityRole="button"
           className="h-11 flex-row items-center pr-4"
           onPress={() => router.back()}>
-          <ChevronLeft color="#635BFF" size={22} />
+          <ChevronLeft color={colors.primary} size={22} />
           <Text className="font-semibold text-app-primary">Settings</Text>
         </Pressable>
         <Text className="text-sm font-medium text-app-muted">{models.length} archived</Text>
@@ -137,7 +139,7 @@ export default function ArchivedItemsScreen() {
         {models.length === 0 ? (
           <View className="mt-8 rounded-3xl border border-app-border bg-app-surface p-6">
             <View className="h-12 w-12 items-center justify-center rounded-2xl bg-app-primary-soft">
-              <ArchiveRestore color="#635BFF" size={23} />
+              <ArchiveRestore color={colors.primary} size={23} />
             </View>
             <Text className="mt-5 text-xl font-bold text-app-text">Your archive is clear</Text>
             <Text className="mt-2 text-sm leading-6 text-app-muted">
@@ -168,7 +170,7 @@ export default function ArchivedItemsScreen() {
                       className="h-11 w-11 items-center justify-center rounded-xl bg-app-danger-soft active:opacity-70 disabled:opacity-40"
                       disabled={isActive}
                       onPress={() => confirmDelete(item.id, item.name)}>
-                      <Trash color="#D84A4A" size={18} />
+                      <Trash color={colors.danger} size={18} />
                     </Pressable>
                   </View>
 
@@ -183,7 +185,7 @@ export default function ArchivedItemsScreen() {
                       className="min-h-12 flex-1 flex-row items-center justify-center rounded-2xl border border-app-border active:bg-app-bg disabled:opacity-40"
                       disabled={isActive}
                       onPress={() => router.push({ pathname: '/item/[id]', params: { id: String(item.id) } })}>
-                      <ExternalLink color="#73736E" size={17} />
+                      <ExternalLink color={colors.textSecondary} size={17} />
                       <Text className="ml-2 font-semibold text-app-text">Details</Text>
                     </Pressable>
                     <Pressable
@@ -191,7 +193,7 @@ export default function ArchivedItemsScreen() {
                       className="min-h-12 flex-1 flex-row items-center justify-center rounded-2xl bg-app-primary-soft active:opacity-70 disabled:opacity-40"
                       disabled={isActive}
                       onPress={() => handleRestore(item.id)}>
-                      <ArchiveRestore color="#635BFF" size={18} />
+                      <ArchiveRestore color={colors.primary} size={18} />
                       <Text className="ml-2 font-semibold text-app-primary">
                         {isActive && activeAction === 'restore' ? 'Restoring...' : 'Restore'}
                       </Text>

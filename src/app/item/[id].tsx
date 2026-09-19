@@ -15,8 +15,10 @@ import { db } from '@/db';
 import { categories, itemHistory, items, reminders } from '@/db/schema';
 import { archiveItem, deleteItem, renewItem, restoreItem } from '@/services/items';
 import { buildRenewalHistoryModel } from '@/utils/item-history-model';
+import { useTheme } from '@/hooks/use-theme';
 
 export default function ItemDetailsScreen() {
+  const colors = useTheme();
   const { created, id, renewed, restored, scheduled, skipped, updated } = useLocalSearchParams<{
     created?: string;
     id: string;
@@ -188,17 +190,17 @@ export default function ItemDetailsScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-app-bg" edges={['top', 'bottom']}>
+    <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: colors.background }}>
       <View className="flex-row items-center justify-between px-4 py-2">
         <Pressable className="h-11 flex-row items-center pr-4" onPress={() => router.back()}>
-          <ChevronLeft color="#635BFF" size={22} />
+          <ChevronLeft color={colors.primary} size={22} />
           <Text className="font-semibold text-app-primary">Back</Text>
         </Pressable>
         {!item.archived ? (
           <Pressable
             className="h-11 flex-row items-center pl-4"
             onPress={() => router.push({ pathname: '/item/new', params: { editId: String(item.id) } })}>
-            <Pencil color="#635BFF" size={17} />
+            <Pencil color={colors.primary} size={17} />
             <Text className="ml-2 font-semibold text-app-primary">Edit</Text>
           </Pressable>
         ) : <View className="h-11" />}
@@ -226,7 +228,7 @@ export default function ItemDetailsScreen() {
         <View className="flex-row items-center">
           <View
             className="mr-3 h-3 w-3 rounded-full"
-            style={{ backgroundColor: item.categoryColor ?? '#737373' }}
+            style={{ backgroundColor: item.categoryColor ?? colors.textSecondary }}
           />
           <Text className="text-xs font-bold uppercase tracking-[1.5px] text-app-muted">
             {item.categoryName ?? 'Uncategorized'} · {item.dateType}
@@ -244,12 +246,12 @@ export default function ItemDetailsScreen() {
         ) : null}
 
         <View className="mt-7 rounded-3xl bg-app-text p-6">
-          <Text className="text-xs font-bold uppercase tracking-[1.5px] text-[#B8B5FF]">Target date</Text>
+          <Text className="text-xs font-bold uppercase tracking-[1.5px]" style={{ color: colors.heroAccent }}>Target date</Text>
           <View className="mt-3 flex-row items-end justify-between">
             <Text className="text-3xl font-bold text-white">{item.targetDate}</Text>
             <StatusBadge targetDate={item.targetDate} />
           </View>
-          <Text className="mt-3 text-sm text-[#B7B7B7]">
+          <Text className="mt-3 text-sm" style={{ color: colors.heroMuted }}>
             {item.repeatType === 'yearly' ? 'Renews yearly on the same month and day' : 'One-time date'}
           </Text>
 
@@ -258,7 +260,7 @@ export default function ItemDetailsScreen() {
               className="mt-6 min-h-12 flex-row items-center justify-center rounded-2xl bg-white active:opacity-80 disabled:opacity-50"
               disabled={Boolean(activeAction)}
               onPress={handleRenew}>
-              <RefreshCw color="#171717" size={18} />
+              <RefreshCw color={colors.text} size={18} />
               <Text className="ml-2 font-semibold text-app-text">
                 {activeAction === 'renew' ? 'Renewing...' : 'Renew for next year'}
               </Text>
@@ -343,7 +345,7 @@ export default function ItemDetailsScreen() {
               className="min-h-14 flex-row items-center px-5 active:bg-app-primary-soft disabled:opacity-50"
               disabled={Boolean(activeAction)}
               onPress={handleRestore}>
-              <RefreshCw color="#635BFF" size={19} />
+              <RefreshCw color={colors.primary} size={19} />
               <Text className="ml-3 font-semibold text-app-primary">
                 {activeAction === 'restore' ? 'Restoring...' : 'Restore item'}
               </Text>
@@ -353,7 +355,7 @@ export default function ItemDetailsScreen() {
               className="min-h-14 flex-row items-center px-5 active:bg-app-primary-soft disabled:opacity-50"
               disabled={Boolean(activeAction)}
               onPress={confirmArchive}>
-              <Archive color="#635BFF" size={19} />
+              <Archive color={colors.primary} size={19} />
               <Text className="ml-3 font-semibold text-app-primary">
                 {activeAction === 'archive' ? 'Archiving...' : 'Archive item'}
               </Text>
@@ -363,7 +365,7 @@ export default function ItemDetailsScreen() {
             className="min-h-14 flex-row items-center border-t border-app-border px-5 active:bg-app-danger-soft disabled:opacity-50"
             disabled={Boolean(activeAction)}
             onPress={confirmDelete}>
-            <Trash color="#D84A4A" size={19} />
+            <Trash color={colors.danger} size={19} />
             <Text className="ml-3 font-semibold text-app-danger">
               {activeAction === 'delete' ? 'Deleting...' : 'Delete permanently'}
             </Text>

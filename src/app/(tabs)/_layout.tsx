@@ -2,18 +2,20 @@ import { Tabs } from 'expo-router';
 import CalendarDays from 'lucide-react-native/icons/calendar-days';
 import House from 'lucide-react-native/icons/house';
 import ListChecks from 'lucide-react-native/icons/list-checks';
+import { useTheme } from '@/hooks/use-theme';
 
 export default function TabLayout() {
+  const colors = useTheme();
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: '#635BFF',
-        tabBarInactiveTintColor: '#858585',
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textSecondary,
         tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
         tabBarStyle: {
-          backgroundColor: '#FFFFFF',
-          borderTopColor: '#E8E8E5',
+          backgroundColor: colors.surface,
+          borderTopColor: colors.border,
           height: 68,
           paddingBottom: 8,
           paddingTop: 7,

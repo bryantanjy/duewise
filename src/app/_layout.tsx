@@ -4,6 +4,8 @@ import { useMigrations } from 'drizzle-orm/expo-sqlite/migrator';
 import { isRunningInExpoGo } from 'expo';
 import type { NotificationResponse } from 'expo-notifications';
 import { router, Stack } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import * as SystemUI from 'expo-system-ui';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, StyleSheet, Text, View } from 'react-native';
 
@@ -12,12 +14,27 @@ import { db } from '@/db';
 import { seedDefaultCategories } from '@/db/seed';
 import { runWithNotificationRuntime } from '@/utils/notification-runtime';
 import { createNotificationResponseCoordinator } from '@/utils/notification-routing';
+import { AppearanceProvider, useAppearance } from '@/contexts/appearance';
+import { useTheme } from '@/hooks/use-theme';
 
 // Drizzle Kit 1.0 RC generates the runtime bundle without the legacy journal
 // field, while the migrator hook's declaration still requires it.
 const bundledMigrations = migrations as unknown as Parameters<typeof useMigrations>[1];
 
 export default function RootLayout() {
+  return <AppearanceProvider><RootLayoutContent /></AppearanceProvider>;
+}
+
+function RootLayoutContent() {
+  const colors = useTheme();
+  const { resolvedTheme } = useAppearance();
+
+  useEffect(() => {
+    void SystemUI.setBackgroundColorAsync(colors.background).catch(() => {
+      // The app views still carry their own theme-aware backgrounds.
+    });
+  }, [colors.background]);
+
   const { success, error } = useMigrations(db, bundledMigrations);
   const [seedComplete, setSeedComplete] = useState(false);
   const [seedError, setSeedError] = useState<Error>();
@@ -121,9 +138,10 @@ export default function RootLayout() {
 
   if (setupError) {
     return (
-      <View style={[styles.container, styles.errorBackground]}>
-        <Text style={styles.errorTitle}>Database setup failed</Text>
-        <Text selectable style={styles.errorMessage}>
+      <View style={[styles.container, { backgroundColor: colors.dangerSoft }]}>
+        <StatusBar style={resolvedTheme === 'dark' ? 'light' : 'dark'} />
+        <Text style={[styles.errorTitle, { color: colors.danger }]}>Database setup failed</Text>
+        <Text selectable style={[styles.errorMessage, { color: colors.danger }]}>
           {setupError.message}
         </Text>
       </View>
@@ -132,40 +150,34 @@ export default function RootLayout() {
 
   if (!success || !seedComplete) {
     return (
-      <View style={styles.container}>
-        <ActivityIndicator color="#635BFF" size="large" />
-        <Text style={styles.loadingText}>Preparing Duewise...</Text>
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <StatusBar style={resolvedTheme === 'dark' ? 'light' : 'dark'} />
+        <ActivityIndicator color={colors.primary} size="large" />
+        <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Preparing Duewise...</Text>
       </View>
     );
   }
 
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return <><StatusBar style={resolvedTheme === 'dark' ? 'light' : 'dark'} /><Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }} /></>;
 }
 
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
-    backgroundColor: '#F7F7F5',
     flex: 1,
     justifyContent: 'center',
     paddingHorizontal: 24,
   },
-  errorBackground: {
-    backgroundColor: '#FFF7F7',
-  },
   errorTitle: {
-    color: '#D84A4A',
     fontSize: 20,
     fontWeight: '700',
   },
   errorMessage: {
-    color: '#8F3030',
     fontSize: 14,
     marginTop: 12,
     textAlign: 'center',
   },
   loadingText: {
-    color: '#737373',
     fontSize: 15,
     marginTop: 16,
   },

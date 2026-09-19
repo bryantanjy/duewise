@@ -1,6 +1,7 @@
 import { Pressable, Text, View } from 'react-native';
 
 import { formatDay, formatMonth } from '@/utils/dates';
+import { useTheme } from '@/hooks/use-theme';
 
 import StatusBadge from './StatusBadge';
 
@@ -21,6 +22,7 @@ type ItemRowProps = {
 };
 
 export default function ItemRow({ item, onPress, showDivider = false }: ItemRowProps) {
+  const colors = useTheme();
   return (
     <Pressable
       accessibilityRole="button"
@@ -41,7 +43,7 @@ export default function ItemRow({ item, onPress, showDivider = false }: ItemRowP
         <View className="flex-row items-center">
           <View
             className="mr-2 h-2 w-2 rounded-full"
-            style={{ backgroundColor: item.categoryColor ?? '#737373' }}
+            style={{ backgroundColor: item.categoryColor ?? colors.textSecondary }}
           />
           <Text className="text-xs font-medium text-app-muted">
             {item.categoryName ?? 'Uncategorized'}

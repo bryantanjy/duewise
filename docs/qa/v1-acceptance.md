@@ -25,6 +25,8 @@ Use `Pass`, `Fail`, or `Not run`. A row changes to `Pass` only after the behavio
 | Items persist after app restart | Not run | Not run | |
 | Create with no reminder days | Not run | Not run | |
 | Create with custom reminder days | Not run | Not run | |
+| Select several reminder-day presets and save them all | Not run | Not run | |
+| Edit an item and retain selected and custom reminder days | Not run | Not run | |
 | Past reminder times are retained as skipped | Not run | Not run | |
 | Leap-day yearly renewal clamps to 28 February | Not run | Not run | |
 
@@ -82,10 +84,12 @@ Use `Pass`, `Fail`, or `Not run`. A row changes to `Pass` only after the behavio
 
 | Case | Android | iOS | Notes |
 |---|---|---|---|
-| Calendar/date picker uses the Duewise light palette | Not run | Not run | V1 is light-only. |
+| Calendar/date picker uses the Duewise light palette | Not run | Not run | |
+| Dark mode covers every screen, card, and date picker | Not run | Not run | |
+| System theme follows device changes; light and dark overrides persist | Not run | Not run | |
 | Category icons and colors remain readable | Not run | Not run | |
 | Validation and operation errors are readable | Not run | Not run | |
 | Interactive actions have at least 44-point targets | Not run | Not run | |
 | Icon-only buttons have screen-reader labels | Not run | Not run | |
-| Item form remains usable with keyboard open | Not run | Not run | |
+| Item form remains usable with keyboard open | Not run | Not run | On Add and Edit, focus Name, Reminder days, and Notes: the form and Save bar move above the keyboard, the focused field and typed text stay visible, and Done dismisses the keyboard. |
 | No event, form, list, or archive card renders blank | Not run | Not run | |

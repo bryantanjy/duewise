@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import ItemRow from '@/components/items/ItemRow';
 import { db } from '@/db';
 import { categories, items } from '@/db/schema';
+import { useTheme } from '@/hooks/use-theme';
 
 const activeItemsQuery = db
   .select({
@@ -25,10 +26,11 @@ const activeItemsQuery = db
   .orderBy(items.targetDate);
 
 export default function ItemsScreen() {
+  const colors = useTheme();
   const { data, error } = useLiveQuery(activeItemsQuery);
 
   return (
-    <SafeAreaView className="flex-1 bg-app-bg" edges={['top']}>
+    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.background }}>
       <ScrollView contentContainerClassName="px-5 pb-28 pt-4">
         <View className="flex-row items-end justify-between">
           <View>

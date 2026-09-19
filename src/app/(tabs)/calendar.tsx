@@ -2,6 +2,8 @@ import { eq } from 'drizzle-orm';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { router } from 'expo-router';
 import Plus from 'lucide-react-native/icons/plus';
+import ArrowLeft from 'lucide-react-native/icons/arrow-left';
+import ArrowRight from 'lucide-react-native/icons/arrow-right';
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -12,6 +14,8 @@ import { db } from '@/db';
 import { categories, items } from '@/db/schema';
 import { buildCalendarEventModel } from '@/utils/calendar-event-model';
 import { daysUntil, formatDay, formatMonth, parseLocalDate, toDateInput } from '@/utils/dates';
+import { useTheme } from '@/hooks/use-theme';
+import type { Colors } from '@/constants/theme';
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
@@ -69,7 +73,8 @@ function itemOccurrencesForDate(data: ItemRowData[], date: Date) {
   });
 }
 
-const calendarStyles = StyleSheet.create({
+function createCalendarStyles(colors: (typeof Colors)['light'] | (typeof Colors)['dark']) {
+  return StyleSheet.create({
   categoryDot: {
     borderRadius: 4,
     height: 8,
@@ -81,27 +86,27 @@ const calendarStyles = StyleSheet.create({
     flexDirection: 'row',
   },
   categoryText: {
-    color: '#737373',
+    color: colors.textSecondary,
     flexShrink: 1,
     fontSize: 12,
     fontWeight: '500',
   },
   dateBadge: {
     alignItems: 'center',
-    backgroundColor: '#EFEDFF',
+    backgroundColor: colors.primarySoft,
     borderRadius: 12,
     paddingVertical: 8,
     width: 56,
   },
   dateDay: {
-    color: '#171717',
+    color: colors.text,
     fontSize: 24,
     fontWeight: '700',
     lineHeight: 28,
     marginTop: 2,
   },
   dateMonth: {
-    color: '#635BFF',
+    color: colors.primary,
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 1,
@@ -113,7 +118,7 @@ const calendarStyles = StyleSheet.create({
   },
   eventCard: {
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     flexDirection: 'row',
     minHeight: 104,
     paddingHorizontal: 16,
@@ -121,7 +126,7 @@ const calendarStyles = StyleSheet.create({
   },
   eventAction: {
     alignItems: 'center',
-    borderTopColor: '#E8E8E5',
+    borderTopColor: colors.border,
     borderTopWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -133,37 +138,31 @@ const calendarStyles = StyleSheet.create({
     opacity: 0.65,
   },
   eventActionText: {
-    color: '#635BFF',
+    color: colors.primary,
     fontSize: 14,
     fontWeight: '600',
   },
   eventDivider: {
-    borderTopColor: '#E8E8E5',
+    borderTopColor: colors.border,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
   eventList: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 16,
   },
   eventTitle: {
-    color: '#171717',
+    color: colors.text,
     fontSize: 16,
     fontWeight: '600',
     lineHeight: 21,
     marginTop: 5,
   },
   highLabel: {
-    color: '#D84A4A',
+    color: colors.danger,
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 1,
     marginTop: 8,
-  },
-  navArrow: {
-    color: '#4B4B4B',
-    fontSize: 24,
-    fontWeight: '700',
-    lineHeight: 28,
   },
   statusChip: {
     borderRadius: 999,
@@ -179,9 +178,12 @@ const calendarStyles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-});
+  });
+}
 
 export default function CalendarScreen() {
+  const colors = useTheme();
+  const calendarStyles = useMemo(() => createCalendarStyles(colors), [colors]);
   const today = useMemo(() => new Date(), []);
   const todayKey = toDateInput(today);
   const [visibleMonth, setVisibleMonth] = useState(() => startOfMonth(today));
@@ -224,7 +226,7 @@ export default function CalendarScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-app-bg" edges={['top']}>
+    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.background }}>
       <ScrollView contentContainerClassName="px-5 pb-28 pt-4">
         <View className="flex-row items-end justify-between">
           <View>
@@ -256,14 +258,14 @@ export default function CalendarScreen() {
               accessibilityLabel="Previous month"
               className="h-11 w-11 items-center justify-center rounded-full active:bg-app-primary-soft"
               onPress={() => changeMonth(-1)}>
-              <Text style={calendarStyles.navArrow}>←</Text>
+              <ArrowLeft color={colors.text} size={22} strokeWidth={2} />
             </Pressable>
             <Text className="text-lg font-bold text-app-text">{monthLabel}</Text>
             <Pressable
               accessibilityLabel="Next month"
               className="h-11 w-11 items-center justify-center rounded-full active:bg-app-primary-soft"
               onPress={() => changeMonth(1)}>
-              <Text style={calendarStyles.navArrow}>→</Text>
+              <ArrowRight color={colors.text} size={22} strokeWidth={2} />
             </Pressable>
           </View>
 
@@ -308,7 +310,7 @@ export default function CalendarScreen() {
                             ? isToday
                               ? 'text-app-primary'
                               : 'text-app-text'
-                            : 'text-[#B8B8B5]'
+                          : 'text-app-muted'
                       }`}>
                       {date.getDate()}
                     </Text>
@@ -318,7 +320,7 @@ export default function CalendarScreen() {
                       <View
                         className="h-1 w-1 rounded-full"
                         key={item.id}
-                        style={{ backgroundColor: isSelected ? '#FFFFFF' : item.categoryColor ?? '#737373' }}
+                        style={{ backgroundColor: isSelected ? '#FFFFFF' : item.categoryColor ?? colors.textSecondary }}
                       />
                     ))}
                   </View>
@@ -348,10 +350,10 @@ export default function CalendarScreen() {
               const remainingDays = daysUntil(model.date);
               const statusColors =
                 remainingDays < 0
-                  ? { backgroundColor: '#FFF0F0', color: '#D84A4A' }
+                  ? { backgroundColor: colors.dangerSoft, color: colors.danger }
                   : remainingDays <= 7
-                    ? { backgroundColor: '#FFF6E8', color: '#D99132' }
-                    : { backgroundColor: '#EFEDFF', color: '#635BFF' };
+                    ? { backgroundColor: colors.warningSoft, color: colors.warning }
+                    : { backgroundColor: colors.primarySoft, color: colors.primary };
 
               return (
                 <View
@@ -424,7 +426,7 @@ export default function CalendarScreen() {
             <Pressable
               className="mt-4 self-start flex-row items-center rounded-xl bg-app-primary-soft px-4 py-3 active:opacity-70"
               onPress={() => router.push('/item/new')}>
-              <Plus color="#635BFF" size={17} />
+              <Plus color={colors.primary} size={17} />
               <Text className="ml-2 font-semibold text-app-primary">Add an item</Text>
             </Pressable>
           </View>

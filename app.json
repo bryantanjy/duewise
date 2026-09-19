@@ -1,29 +1,29 @@
 {
   "expo": {
-    "name": "life-reminder",
+    "name": "Duewise",
     "slug": "life-reminder",
     "version": "1.0.0",
     "orientation": "portrait",
-    "backgroundColor": "#F7F7F5",
+    "backgroundColor": "#F7F5F1",
     "icon": "./assets/images/icon.png",
     "scheme": "lifereminder",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "ios": {
-      "backgroundColor": "#F7F7F5",
-      "icon": "./assets/expo.icon",
-      "userInterfaceStyle": "light"
+      "backgroundColor": "#F7F5F1",
+      "icon": "./assets/images/icon.png",
+      "userInterfaceStyle": "automatic"
     },
     "android": {
-      "backgroundColor": "#F7F7F5",
+      "backgroundColor": "#F7F5F1",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#3B3468",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.bryan.duewise",
-      "userInterfaceStyle": "light"
+      "userInterfaceStyle": "automatic"
     },
     "web": {
       "output": "single",
@@ -42,16 +42,21 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#3B3468",
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "imageWidth": 94,
+          "dark": {
+            "backgroundColor": "#101018",
+            "image": "./assets/images/splash-icon.png"
+          }
         }
       ],
       "expo-sqlite",
+      "expo-system-ui",
       [
         "expo-notifications",
         {
-          "color": "#635BFF",
+          "color": "#5B50C5",
           "defaultChannel": "duewise-reminders"
         }
       ]

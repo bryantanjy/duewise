@@ -1,22 +1,23 @@
 @import 'tailwindcss';
 @import 'uniwind';
 
-@theme {
-  --color-app-bg: #F7F7F5;
-  --color-app-surface: #FFFFFF;
+/* Semantic utilities keep Uniwind and native controls on the same palette. */
+@utility bg-app-bg { background-color: light-dark(#F7F5F1, #101018); }
+@utility bg-app-surface { background-color: light-dark(#FFFEFC, #1B1B27); }
+@utility bg-app-text { background-color: light-dark(#242132, #282638); }
+@utility bg-app-primary { background-color: light-dark(#5B50C5, #6356C8); }
+@utility bg-app-primary-soft { background-color: light-dark(#EEEAFB, #2C2949); }
+@utility bg-app-danger-soft { background-color: light-dark(#FBEDEF, #422831); }
+@utility bg-app-warning-soft { background-color: light-dark(#FCF3E5, #3B3025); }
+@utility bg-app-success-soft { background-color: light-dark(#EAF5EF, #203D35); }
 
-  --color-app-text: #171717;
-  --color-app-muted: #73736E;
+@utility text-app-text { color: light-dark(#242132, #F6F3F8); }
+@utility text-app-muted { color: light-dark(#6F6B77, #A9A5B5); }
+@utility text-app-primary { color: light-dark(#5B50C5, #B5ADFF); }
+@utility text-app-danger { color: light-dark(#B4484F, #FF979F); }
+@utility text-app-warning { color: light-dark(#99651E, #EAC382); }
+@utility text-app-success { color: light-dark(#397B65, #8FD5B3); }
 
-  --color-app-border: #E4E4DF;
-
-  --color-app-primary: #635BFF;
-  --color-app-primary-soft: #EFEDFF;
-
-  --color-app-danger: #D84A4A;
-  --color-app-danger-soft: #FFF0F0;
-  --color-app-warning: #B87518;
-  --color-app-warning-soft: #FFF6E8;
-  --color-app-success: #3F7D55;
-  --color-app-success-soft: #EDF7F0;
-}
+@utility border-app-border { border-color: light-dark(#E9E4E5, #333241); }
+@utility border-app-primary { border-color: light-dark(#5B50C5, #8C80EC); }
+@utility border-app-danger { border-color: light-dark(#B4484F, #FF979F); }
