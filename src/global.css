@@ -2,22 +2,23 @@
 @import 'uniwind';
 
 /* Semantic utilities keep Uniwind and native controls on the same palette. */
-@utility bg-app-bg { background-color: light-dark(#F7F5F1, #101018); }
-@utility bg-app-surface { background-color: light-dark(#FFFEFC, #1B1B27); }
-@utility bg-app-text { background-color: light-dark(#242132, #282638); }
-@utility bg-app-primary { background-color: light-dark(#5B50C5, #6356C8); }
-@utility bg-app-primary-soft { background-color: light-dark(#EEEAFB, #2C2949); }
-@utility bg-app-danger-soft { background-color: light-dark(#FBEDEF, #422831); }
-@utility bg-app-warning-soft { background-color: light-dark(#FCF3E5, #3B3025); }
-@utility bg-app-success-soft { background-color: light-dark(#EAF5EF, #203D35); }
+@utility bg-app-bg { background-color: light-dark(#F7F8FA, #0C0C14); }
+@utility bg-app-surface { background-color: light-dark(#FFFFFF, #161622); }
+@utility bg-app-text { background-color: light-dark(#191724, #18162B); }
+@utility bg-app-primary { background-color: light-dark(#5D50E6, #6355EE); }
+@utility bg-app-primary-soft { background-color: light-dark(#EEECFF, #25224A); }
+@utility bg-app-danger-soft { background-color: light-dark(#FFE4E6, #381C26); }
+@utility bg-app-warning-soft { background-color: light-dark(#FEF3C7, #382D16); }
+@utility bg-app-success-soft { background-color: light-dark(#D1FAE5, #133529); }
 
-@utility text-app-text { color: light-dark(#242132, #F6F3F8); }
-@utility text-app-muted { color: light-dark(#6F6B77, #A9A5B5); }
-@utility text-app-primary { color: light-dark(#5B50C5, #B5ADFF); }
-@utility text-app-danger { color: light-dark(#B4484F, #FF979F); }
-@utility text-app-warning { color: light-dark(#99651E, #EAC382); }
-@utility text-app-success { color: light-dark(#397B65, #8FD5B3); }
+@utility text-app-text { color: light-dark(#191724, #F5F5F9); }
+@utility text-app-muted { color: light-dark(#6E6A86, #9A96B2); }
+@utility text-app-primary { color: light-dark(#5D50E6, #8B7FFF); }
+@utility text-app-danger { color: light-dark(#E11D48, #FB7185); }
+@utility text-app-warning { color: light-dark(#D97706, #FBBF24); }
+@utility text-app-success { color: light-dark(#059669, #34D399); }
 
-@utility border-app-border { border-color: light-dark(#E9E4E5, #333241); }
-@utility border-app-primary { border-color: light-dark(#5B50C5, #8C80EC); }
-@utility border-app-danger { border-color: light-dark(#B4484F, #FF979F); }
+@utility border-app-border { border-color: light-dark(#E8EAED, #262638); }
+@utility border-app-primary { border-color: light-dark(#5D50E6, #8B7FFF); }
+@utility border-app-danger { border-color: light-dark(#E11D48, #FB7185); }
+

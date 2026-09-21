@@ -8,7 +8,9 @@ import Trash from 'lucide-react-native/icons/trash';
 import { useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
 
+import Card from '@/components/ui/Card';
 import { db } from '@/db';
 import { categories, items, reminders } from '@/db/schema';
 import { deleteItem, restoreItem } from '@/services/items';
@@ -51,6 +53,7 @@ export default function ArchivedItemsScreen() {
   const [actionError, setActionError] = useState<string>();
 
   async function handleRestore(itemId: number) {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     setActiveItemId(itemId);
     setActiveAction('restore');
     setActionError(undefined);
@@ -74,6 +77,7 @@ export default function ArchivedItemsScreen() {
   }
 
   function confirmDelete(itemId: number, itemName: string) {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     Alert.alert(
       'Delete this item permanently?',
       `“${itemName}” and its renewal history will be removed.`,
@@ -104,24 +108,29 @@ export default function ArchivedItemsScreen() {
 
   return (
     <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: colors.background }}>
-      <View className="flex-row items-center justify-between px-4 py-2">
+      <View className="flex-row items-center justify-between px-5 py-3">
         <Pressable
           accessibilityLabel="Back to settings"
           accessibilityRole="button"
-          className="h-11 flex-row items-center pr-4"
-          onPress={() => router.back()}>
-          <ChevronLeft color={colors.primary} size={22} />
-          <Text className="font-semibold text-app-primary">Settings</Text>
+          className="h-10 flex-row items-center pr-3 active:opacity-70"
+          onPress={() => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+            router.back();
+          }}>
+          <ChevronLeft color={colors.primary} size={22} strokeWidth={2.2} />
+          <Text className="text-sm font-bold text-app-primary">Settings</Text>
         </Pressable>
-        <Text className="text-sm font-medium text-app-muted">{models.length} archived</Text>
+        <View className="rounded-full px-2.5 py-0.5" style={{ backgroundColor: colors.primarySoft }}>
+          <Text className="text-xs font-bold text-app-primary">{models.length} archived</Text>
+        </View>
       </View>
 
-      <ScrollView contentContainerClassName="px-5 pb-12 pt-3">
-        <Text className="text-xs font-bold uppercase tracking-[2px] text-app-primary">
-          Saved, not scheduled
+      <ScrollView contentContainerClassName="px-5 pb-16 pt-2" showsVerticalScrollIndicator={false}>
+        <Text className="text-[11px] font-bold uppercase tracking-[1.5px] text-app-primary">
+          Saved, Not Scheduled
         </Text>
-        <Text className="mt-1 text-3xl font-bold tracking-tight text-app-text">Archived items</Text>
-        <Text className="mt-2 max-w-[320px] text-sm leading-6 text-app-muted">
+        <Text className="mt-0.5 text-3xl font-extrabold tracking-tight text-app-text">Archived items</Text>
+        <Text className="mt-1 text-xs leading-5 text-app-muted">
           Reminder days stay saved here. Restore an item whenever it becomes relevant again.
         </Text>
 
@@ -137,69 +146,84 @@ export default function ArchivedItemsScreen() {
         ) : null}
 
         {models.length === 0 ? (
-          <View className="mt-8 rounded-3xl border border-app-border bg-app-surface p-6">
-            <View className="h-12 w-12 items-center justify-center rounded-2xl bg-app-primary-soft">
-              <ArchiveRestore color={colors.primary} size={23} />
+          <Card className="mt-8 items-center p-8 text-center">
+            <View
+              className="h-14 w-14 items-center justify-center rounded-3xl"
+              style={{ backgroundColor: colors.primarySoft }}>
+              <ArchiveRestore color={colors.primary} size={26} />
             </View>
-            <Text className="mt-5 text-xl font-bold text-app-text">Your archive is clear</Text>
-            <Text className="mt-2 text-sm leading-6 text-app-muted">
+            <Text className="mt-4 text-xl font-bold text-app-text">Your archive is clear</Text>
+            <Text className="mt-2 text-center text-xs leading-5 text-app-muted">
               Items you archive will appear here with their reminder-day settings intact.
             </Text>
-          </View>
+          </Card>
         ) : (
-          <View className="mt-7 gap-4">
+          <View className="mt-6 gap-3.5">
             {models.map((item) => {
               const isActive = activeItemId === item.id;
               return (
-                <View className="rounded-3xl border border-app-border bg-app-surface p-5" key={item.id}>
+                <Card className="p-5" key={item.id}>
                   <View className="flex-row items-start justify-between">
                     <View className="min-w-0 flex-1 pr-3">
                       <View className="flex-row items-center">
-                        <View className="mr-2 h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.categoryColor }} />
-                        <Text className="text-xs font-semibold uppercase tracking-[1.2px] text-app-muted">
+                        <View
+                          className="mr-2 h-2.5 w-2.5 rounded-full"
+                          style={{ backgroundColor: item.categoryColor }}
+                        />
+                        <Text className="text-[11px] font-bold uppercase tracking-[1.2px] text-app-muted">
                           {item.categoryName}
                         </Text>
                       </View>
-                      <Text className="mt-2 text-xl font-bold text-app-text" numberOfLines={2}>
+                      <Text className="mt-1.5 text-xl font-bold text-app-text" numberOfLines={2}>
                         {item.name}
                       </Text>
                     </View>
                     <Pressable
                       accessibilityLabel={`Permanently delete ${item.name}`}
                       accessibilityRole="button"
-                      className="h-11 w-11 items-center justify-center rounded-xl bg-app-danger-soft active:opacity-70 disabled:opacity-40"
+                      className="h-10 w-10 items-center justify-center rounded-xl active:opacity-70 disabled:opacity-40"
                       disabled={isActive}
-                      onPress={() => confirmDelete(item.id, item.name)}>
-                      <Trash color={colors.danger} size={18} />
+                      onPress={() => confirmDelete(item.id, item.name)}
+                      style={{ backgroundColor: colors.dangerSoft }}>
+                      <Trash color={colors.danger} size={16} />
                     </Pressable>
                   </View>
 
-                  <View className="mt-5 rounded-2xl bg-app-bg px-4 py-3">
-                    <Text className="font-semibold text-app-text">{formatDateForDisplay(item.targetDate)}</Text>
-                    <Text className="mt-1 text-sm text-app-muted">{item.reminderLabel}</Text>
+                  <View
+                    className="mt-4 rounded-2xl p-3"
+                    style={{ backgroundColor: colors.surfaceInset }}>
+                    <Text className="text-sm font-bold text-app-text">
+                      {formatDateForDisplay(item.targetDate)}
+                    </Text>
+                    <Text className="mt-0.5 text-xs text-app-muted">{item.reminderLabel}</Text>
                   </View>
 
-                  <View className="mt-4 flex-row gap-3">
+                  <View className="mt-4 flex-row gap-2.5">
                     <Pressable
                       accessibilityRole="button"
-                      className="min-h-12 flex-1 flex-row items-center justify-center rounded-2xl border border-app-border active:bg-app-bg disabled:opacity-40"
+                      className="min-h-11 flex-1 flex-row items-center justify-center rounded-2xl border active:opacity-75 disabled:opacity-40"
                       disabled={isActive}
-                      onPress={() => router.push({ pathname: '/item/[id]', params: { id: String(item.id) } })}>
-                      <ExternalLink color={colors.textSecondary} size={17} />
-                      <Text className="ml-2 font-semibold text-app-text">Details</Text>
+                      onPress={() => {
+                        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                        router.push({ pathname: '/item/[id]', params: { id: String(item.id) } });
+                      }}
+                      style={{ borderColor: colors.border }}>
+                      <ExternalLink color={colors.textSecondary} size={15} />
+                      <Text className="ml-2 text-xs font-bold text-app-text">Details</Text>
                     </Pressable>
                     <Pressable
                       accessibilityRole="button"
-                      className="min-h-12 flex-1 flex-row items-center justify-center rounded-2xl bg-app-primary-soft active:opacity-70 disabled:opacity-40"
+                      className="min-h-11 flex-1 flex-row items-center justify-center rounded-2xl active:opacity-75 disabled:opacity-40"
                       disabled={isActive}
-                      onPress={() => handleRestore(item.id)}>
-                      <ArchiveRestore color={colors.primary} size={18} />
-                      <Text className="ml-2 font-semibold text-app-primary">
+                      onPress={() => handleRestore(item.id)}
+                      style={{ backgroundColor: colors.primarySoft }}>
+                      <ArchiveRestore color={colors.primary} size={16} />
+                      <Text className="ml-2 text-xs font-bold text-app-primary">
                         {isActive && activeAction === 'restore' ? 'Restoring...' : 'Restore'}
                       </Text>
                     </Pressable>
                   </View>
-                </View>
+                </Card>
               );
             })}
           </View>
@@ -208,3 +232,4 @@ export default function ArchivedItemsScreen() {
     </SafeAreaView>
   );
 }
+

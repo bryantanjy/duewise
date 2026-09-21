@@ -2,15 +2,24 @@ import { and, desc, eq } from 'drizzle-orm';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { router, useLocalSearchParams } from 'expo-router';
 import Archive from 'lucide-react-native/icons/archive';
+import Bell from 'lucide-react-native/icons/bell';
+import Calendar from 'lucide-react-native/icons/calendar';
 import ChevronLeft from 'lucide-react-native/icons/chevron-left';
+import FileText from 'lucide-react-native/icons/file-text';
+import ClockArrowLeft from 'lucide-react-native/icons/clock-arrow-left';
 import Pencil from 'lucide-react-native/icons/pencil';
 import RefreshCw from 'lucide-react-native/icons/refresh-cw';
+import Tag from 'lucide-react-native/icons/tag';
 import Trash from 'lucide-react-native/icons/trash';
 import { useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
 
+import Countdown from '@/components/items/Countdown';
 import StatusBadge from '@/components/items/StatusBadge';
+import Button from '@/components/ui/Button';
+import Card from '@/components/ui/Card';
 import { db } from '@/db';
 import { categories, itemHistory, items, reminders } from '@/db/schema';
 import { archiveItem, deleteItem, renewItem, restoreItem } from '@/services/items';
@@ -109,6 +118,7 @@ export default function ItemDetailsScreen() {
   const skippedCount = Number(skipped ?? 0);
 
   async function handleRenew() {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     setActionError(undefined);
     setActiveAction('renew');
     try {
@@ -130,6 +140,7 @@ export default function ItemDetailsScreen() {
   }
 
   async function handleRestore() {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     setActionError(undefined);
     setActiveAction('restore');
     try {
@@ -151,6 +162,7 @@ export default function ItemDetailsScreen() {
   }
 
   function confirmArchive() {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     Alert.alert('Archive this item?', 'Its scheduled reminders will be cancelled.', [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -170,6 +182,7 @@ export default function ItemDetailsScreen() {
   }
 
   function confirmDelete() {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     Alert.alert('Delete this item?', 'This removes its history and cancels all reminders.', [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -191,25 +204,41 @@ export default function ItemDetailsScreen() {
 
   return (
     <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: colors.background }}>
-      <View className="flex-row items-center justify-between px-4 py-2">
-        <Pressable className="h-11 flex-row items-center pr-4" onPress={() => router.back()}>
-          <ChevronLeft color={colors.primary} size={22} />
-          <Text className="font-semibold text-app-primary">Back</Text>
+      {/* Top Navigation Bar */}
+      <View className="flex-row items-center justify-between px-5 py-3">
+        <Pressable
+          accessibilityLabel="Go back"
+          accessibilityRole="button"
+          className="h-10 flex-row items-center pr-3 active:opacity-70"
+          onPress={() => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+            router.back();
+          }}>
+          <ChevronLeft color={colors.primary} size={22} strokeWidth={2.2} />
+          <Text className="text-sm font-bold text-app-primary">Back</Text>
         </Pressable>
+
         {!item.archived ? (
           <Pressable
-            className="h-11 flex-row items-center pl-4"
-            onPress={() => router.push({ pathname: '/item/new', params: { editId: String(item.id) } })}>
-            <Pencil color={colors.primary} size={17} />
-            <Text className="ml-2 font-semibold text-app-primary">Edit</Text>
+            accessibilityLabel="Edit item"
+            accessibilityRole="button"
+            className="flex-row items-center rounded-2xl px-3.5 py-2 active:opacity-75"
+            onPress={() => {
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+              router.push({ pathname: '/item/new', params: { editId: String(item.id) } });
+            }}
+            style={{ backgroundColor: colors.primarySoft }}>
+            <Pencil color={colors.primary} size={15} strokeWidth={2.2} />
+            <Text className="ml-1.5 text-xs font-bold text-app-primary">Edit</Text>
           </Pressable>
-        ) : <View className="h-11" />}
+        ) : null}
       </View>
 
-      <ScrollView contentContainerClassName="px-5 pb-12 pt-2">
+      <ScrollView contentContainerClassName="px-5 pb-16 pt-2" showsVerticalScrollIndicator={false}>
+        {/* Notification Status Banner */}
         {created === '1' || updated === '1' || renewed === '1' || restored === '1' ? (
-          <View className="mb-5 rounded-2xl bg-app-success-soft p-4">
-            <Text className="font-semibold text-app-success">
+          <Card className="mb-5 p-4" style={{ backgroundColor: colors.successSoft, borderColor: colors.success }}>
+            <Text className="font-bold text-app-success">
               {restored === '1'
                 ? 'Item restored'
                 : renewed === '1'
@@ -218,50 +247,84 @@ export default function ItemDetailsScreen() {
                     ? 'Changes saved'
                     : 'Item saved'}
             </Text>
-            <Text className="mt-1 text-sm leading-5 text-app-muted">
+            <Text className="mt-1 text-xs leading-5 text-app-muted">
               {scheduledCount} {scheduledCount === 1 ? 'reminder' : 'reminders'} scheduled
               {skippedCount > 0 ? `; ${skippedCount} could not be scheduled` : ''}.
             </Text>
-          </View>
+          </Card>
         ) : null}
 
+        {/* Category Pill & Item Title */}
         <View className="flex-row items-center">
           <View
-            className="mr-3 h-3 w-3 rounded-full"
+            className="mr-2 h-2.5 w-2.5 rounded-full"
             style={{ backgroundColor: item.categoryColor ?? colors.textSecondary }}
           />
           <Text className="text-xs font-bold uppercase tracking-[1.5px] text-app-muted">
             {item.categoryName ?? 'Uncategorized'} · {item.dateType}
           </Text>
         </View>
-        <Text className="mt-3 text-3xl font-bold tracking-tight text-app-text">{item.name}</Text>
+        <Text className="mt-2 text-3xl font-extrabold tracking-tight text-app-text">
+          {item.name}
+        </Text>
 
         {item.archived ? (
-          <View className="mt-5 rounded-2xl bg-app-warning-soft p-4">
-            <Text className="font-semibold text-app-warning">Archived</Text>
-            <Text className="mt-1 text-sm leading-5 text-app-muted">
-              Reminder days are saved, but notifications are inactive until this item is restored.
+          <Card className="mt-4 p-4" style={{ backgroundColor: colors.warningSoft, borderColor: colors.warning }}>
+            <Text className="font-bold text-app-warning">Archived Item</Text>
+            <Text className="mt-1 text-xs leading-5 text-app-muted">
+              Reminders are paused while this item is in the archive. Restore it anytime to resume notifications.
             </Text>
-          </View>
+          </Card>
         ) : null}
 
-        <View className="mt-7 rounded-3xl bg-app-text p-6">
-          <Text className="text-xs font-bold uppercase tracking-[1.5px]" style={{ color: colors.heroAccent }}>Target date</Text>
-          <View className="mt-3 flex-row items-end justify-between">
-            <Text className="text-3xl font-bold text-white">{item.targetDate}</Text>
-            <StatusBadge targetDate={item.targetDate} />
+        {/* Featured Countdown Hero Card */}
+        <View
+          className="mt-6 overflow-hidden rounded-[28px] p-6"
+          style={{
+            backgroundColor: colors.hero,
+            shadowColor: colors.primary,
+            shadowOffset: { width: 0, height: 8 },
+            shadowOpacity: 0.18,
+            shadowRadius: 16,
+            elevation: 6,
+          }}>
+          <View className="pointer-events-none absolute -right-10 -top-10 h-44 w-44 rounded-full border border-white/10" />
+          <View className="pointer-events-none absolute -right-2 -top-2 h-28 w-28 rounded-full border border-white/10" />
+
+          <View className="flex-row items-center justify-between">
+            <View className="flex-1 pr-4">
+              <Text className="text-[11px] font-bold uppercase tracking-[1.5px]" style={{ color: colors.heroAccent }}>
+                Target Date
+              </Text>
+              <Text className="mt-2 text-3xl font-extrabold text-white" style={{ fontVariant: ['tabular-nums'] }}>
+                {item.targetDate}
+              </Text>
+              <Text className="mt-1.5 text-xs font-medium" style={{ color: colors.heroMuted }}>
+                {item.repeatType === 'yearly'
+                  ? 'Renews yearly on the same day'
+                  : 'One-time milestone'}
+              </Text>
+            </View>
+
+            <View className="rounded-2xl border border-white/15 bg-white/10 p-2.5">
+              <Countdown size={68} strokeWidth={5.5} targetDate={item.targetDate} />
+            </View>
           </View>
-          <Text className="mt-3 text-sm" style={{ color: colors.heroMuted }}>
-            {item.repeatType === 'yearly' ? 'Renews yearly on the same month and day' : 'One-time date'}
-          </Text>
 
           {!item.archived && item.repeatType === 'yearly' ? (
             <Pressable
-              className="mt-6 min-h-12 flex-row items-center justify-center rounded-2xl bg-white active:opacity-80 disabled:opacity-50"
+              accessibilityRole="button"
+              className="mt-6 min-h-12 flex-row items-center justify-center rounded-2xl bg-white active:opacity-85 disabled:opacity-50"
               disabled={Boolean(activeAction)}
-              onPress={handleRenew}>
-              <RefreshCw color={colors.text} size={18} />
-              <Text className="ml-2 font-semibold text-app-text">
+              onPress={handleRenew}
+              style={{
+                shadowColor: '#000000',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.1,
+                shadowRadius: 4,
+              }}>
+              <RefreshCw color={colors.hero} size={16} strokeWidth={2.2} />
+              <Text className="ml-2 font-bold" style={{ color: colors.hero }}>
                 {activeAction === 'renew' ? 'Renewing...' : 'Renew for next year'}
               </Text>
             </Pressable>
@@ -274,103 +337,187 @@ export default function ItemDetailsScreen() {
           </Text>
         ) : null}
 
-        <View className="mt-6 rounded-2xl bg-app-surface p-5">
-          <Text className="text-xs font-bold uppercase tracking-[1.5px] text-app-muted">Reminders</Text>
+        {/* Bento: Reminders Schedule */}
+        <Text className="mb-2.5 mt-8 text-xs font-bold uppercase tracking-[1.5px] text-app-muted">
+          Reminders
+        </Text>
+        <Card className="p-4">
+          <View className="mb-3 flex-row items-center">
+            <View
+              className="h-8 w-8 items-center justify-center rounded-xl"
+              style={{ backgroundColor: colors.primarySoft }}>
+              <Bell color={colors.primary} size={16} />
+            </View>
+            <Text className="ml-3 text-sm font-bold text-app-text">Notification schedule</Text>
+          </View>
+
           {reminderRows.length > 0 ? (
-            <View className="mt-3">
+            <View>
               {reminderRows
                 .slice()
                 .sort((left, right) => right.daysBefore - left.daysBefore)
                 .map((reminder, index) => (
                   <View
-                    className={`min-h-11 flex-row items-center justify-between ${index > 0 ? 'border-t border-app-border' : ''}`}
+                    className={`flex-row items-center justify-between py-3 ${
+                      index > 0 ? 'border-t border-app-border' : ''
+                    }`}
                     key={reminder.id}>
-                    <Text className="text-app-text">
+                    <Text className="text-sm font-semibold text-app-text">
                       {reminder.daysBefore === 0
                         ? 'On the due date'
                         : `${reminder.daysBefore} ${reminder.daysBefore === 1 ? 'day' : 'days'} before`}
                     </Text>
-                    <Text className={reminder.notificationId ? 'text-sm text-app-success' : 'text-sm text-app-muted'}>
-                      {reminder.notificationId ? 'Scheduled' : 'Inactive'}
-                    </Text>
+                    <View className="flex-row items-center">
+                      <View
+                        className="mr-2 h-2 w-2 rounded-full"
+                        style={{
+                          backgroundColor: reminder.notificationId
+                            ? colors.success
+                            : colors.textSecondary,
+                        }}
+                      />
+                      <Text
+                        className="text-xs font-semibold"
+                        style={{
+                          color: reminder.notificationId ? colors.success : colors.textSecondary,
+                        }}>
+                        {reminder.notificationId ? 'Scheduled' : 'Inactive'}
+                      </Text>
+                    </View>
                   </View>
                 ))}
             </View>
           ) : (
-            <Text className="mt-3 text-app-muted">No reminders configured.</Text>
+            <Text className="py-2 text-xs text-app-muted">No reminders configured for this item.</Text>
           )}
-        </View>
+        </Card>
 
-        <View className="mt-4 rounded-2xl bg-app-surface p-5">
-          <View className="flex-row items-center justify-between">
-            <Text className="text-xs font-bold uppercase tracking-[1.5px] text-app-muted">Importance</Text>
-            <Text className="capitalize font-semibold text-app-text">{item.importance}</Text>
-          </View>
-          {item.notes ? (
-            <View className="mt-4 border-t border-app-border pt-4">
-              <Text className="text-xs font-bold uppercase tracking-[1.5px] text-app-muted">Notes</Text>
-              <Text className="mt-2 leading-6 text-app-text">{item.notes}</Text>
+        {/* Bento: Details & Specs */}
+        <Text className="mb-2.5 mt-6 text-xs font-bold uppercase tracking-[1.5px] text-app-muted">
+          Specifications
+        </Text>
+        <Card className="p-4">
+          <View className="flex-row items-center justify-between py-1.5">
+            <View className="flex-row items-center">
+              <Tag color={colors.textSecondary} size={16} />
+              <Text className="ml-2.5 text-sm font-semibold text-app-muted">Category</Text>
             </View>
-          ) : null}
-        </View>
+            <Text className="text-sm font-bold text-app-text">{item.categoryName ?? 'Uncategorized'}</Text>
+          </View>
 
-        {historyModels.length > 0 ? (
-          <View className="mt-4 rounded-2xl bg-app-surface p-5">
-            <Text className="text-xs font-bold uppercase tracking-[1.5px] text-app-muted">
-              Renewal history
+          <View className="my-2 border-t border-app-border" />
+
+          <View className="flex-row items-center justify-between py-1.5">
+            <View className="flex-row items-center">
+              <Calendar color={colors.textSecondary} size={16} />
+              <Text className="ml-2.5 text-sm font-semibold text-app-muted">Date Type</Text>
+            </View>
+            <Text className="capitalize text-sm font-bold text-app-text">{item.dateType}</Text>
+          </View>
+
+          <View className="my-2 border-t border-app-border" />
+
+          <View className="flex-row items-center justify-between py-1.5">
+            <View className="flex-row items-center">
+              <View
+                className="h-3 w-3 rounded-full"
+                style={{ backgroundColor: item.importance === 'high' ? colors.danger : colors.primary }}
+              />
+              <Text className="ml-2.5 text-sm font-semibold text-app-muted">Priority</Text>
+            </View>
+            <Text
+              className="capitalize text-sm font-bold"
+              style={{ color: item.importance === 'high' ? colors.danger : colors.text }}>
+              {item.importance}
             </Text>
-            <View className="mt-3">
+          </View>
+        </Card>
+
+        {/* Bento: Notes */}
+        {item.notes ? (
+          <View className="mt-6">
+            <Text className="mb-2.5 text-xs font-bold uppercase tracking-[1.5px] text-app-muted">
+              Notes
+            </Text>
+            <Card className="p-4">
+              <View className="mb-2 flex-row items-center">
+                <FileText color={colors.primary} size={16} />
+                <Text className="ml-2 text-xs font-bold uppercase tracking-wider text-app-primary">
+                  Attached details
+                </Text>
+              </View>
+              <Text className="text-sm leading-6 text-app-text">{item.notes}</Text>
+            </Card>
+          </View>
+        ) : null}
+
+        {/* Bento: Renewal History */}
+        {historyModels.length > 0 ? (
+          <View className="mt-6">
+            <Text className="mb-2.5 text-xs font-bold uppercase tracking-[1.5px] text-app-muted">
+              Renewal History
+            </Text>
+            <Card className="p-4">
+              <View className="mb-3 flex-row items-center">
+                <ClockArrowLeft color={colors.primary} size={16} />
+                <Text className="ml-2.5 text-sm font-bold text-app-text">Past renewals</Text>
+              </View>
               {historyModels.map((entry, index) => (
                 <View
                   accessible
                   accessibilityLabel={`Renewed from ${entry.previousDate} to ${entry.newDate} on ${entry.changedAt}`}
                   className={`py-3 ${index > 0 ? 'border-t border-app-border' : ''}`}
                   key={entry.id}>
-                  <Text className="font-semibold text-app-text">
+                  <Text className="font-bold text-app-text">
                     {entry.previousDate} → {entry.newDate}
                   </Text>
-                  <Text className="mt-1 text-sm text-app-muted">Renewed {entry.changedAt}</Text>
+                  <Text className="mt-0.5 text-xs text-app-muted">Renewed on {entry.changedAt}</Text>
                 </View>
               ))}
-            </View>
+            </Card>
           </View>
         ) : null}
 
-        <Text className="mb-2 mt-9 text-xs font-bold uppercase tracking-[1.5px] text-app-muted">
-          Item management
+        {/* Management Actions */}
+        <Text className="mb-2.5 mt-9 text-xs font-bold uppercase tracking-[1.5px] text-app-muted">
+          Manage Item
         </Text>
-        <View className="overflow-hidden rounded-2xl bg-app-surface">
+        <Card className="overflow-hidden p-0">
           {item.archived ? (
             <Pressable
-              className="min-h-14 flex-row items-center px-5 active:bg-app-primary-soft disabled:opacity-50"
+              accessibilityRole="button"
+              className="min-h-14 flex-row items-center px-5 active:opacity-75 disabled:opacity-50"
               disabled={Boolean(activeAction)}
               onPress={handleRestore}>
-              <RefreshCw color={colors.primary} size={19} />
-              <Text className="ml-3 font-semibold text-app-primary">
-                {activeAction === 'restore' ? 'Restoring...' : 'Restore item'}
+              <RefreshCw color={colors.primary} size={18} strokeWidth={2} />
+              <Text className="ml-3.5 font-bold text-app-primary">
+                {activeAction === 'restore' ? 'Restoring...' : 'Restore item to active'}
               </Text>
             </Pressable>
           ) : (
             <Pressable
-              className="min-h-14 flex-row items-center px-5 active:bg-app-primary-soft disabled:opacity-50"
+              accessibilityRole="button"
+              className="min-h-14 flex-row items-center px-5 active:opacity-75 disabled:opacity-50"
               disabled={Boolean(activeAction)}
               onPress={confirmArchive}>
-              <Archive color={colors.primary} size={19} />
-              <Text className="ml-3 font-semibold text-app-primary">
+              <Archive color={colors.primary} size={18} strokeWidth={2} />
+              <Text className="ml-3.5 font-bold text-app-primary">
                 {activeAction === 'archive' ? 'Archiving...' : 'Archive item'}
               </Text>
             </Pressable>
           )}
+
           <Pressable
-            className="min-h-14 flex-row items-center border-t border-app-border px-5 active:bg-app-danger-soft disabled:opacity-50"
+            accessibilityRole="button"
+            className="min-h-14 flex-row items-center border-t border-app-border px-5 active:opacity-75 disabled:opacity-50"
             disabled={Boolean(activeAction)}
             onPress={confirmDelete}>
-            <Trash color={colors.danger} size={19} />
-            <Text className="ml-3 font-semibold text-app-danger">
+            <Trash color={colors.danger} size={18} strokeWidth={2} />
+            <Text className="ml-3.5 font-bold text-app-danger">
               {activeAction === 'delete' ? 'Deleting...' : 'Delete permanently'}
             </Text>
           </Pressable>
-        </View>
+        </Card>
       </ScrollView>
     </SafeAreaView>
   );

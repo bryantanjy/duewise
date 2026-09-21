@@ -16,8 +16,10 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
 
 import { db } from '@/db';
+
 import { categories, items, reminders } from '@/db/schema';
 import CategoryIcon from '@/components/categories/CategoryIcon';
 import { useTheme } from '@/hooks/use-theme';
@@ -237,294 +239,474 @@ export default function NewItemScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={0}
         style={{ flex: 1 }}>
-        <View className="flex-row items-center justify-between px-5 py-2">
-          <Pressable className="py-2 pr-4" onPress={() => router.back()}>
-            <Text className="text-base font-semibold text-app-primary">Cancel</Text>
+        {/* Navigation Bar */}
+        <View className="flex-row items-center justify-between px-5 py-3">
+          <Pressable
+            accessibilityLabel="Cancel and go back"
+            accessibilityRole="button"
+            className="py-1 pr-4 active:opacity-70"
+            onPress={() => {
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+              router.back();
+            }}>
+            <Text className="text-sm font-bold text-app-primary">Cancel</Text>
           </Pressable>
-          <Text className="text-xl font-bold text-app-text">
-            {isEditing ? 'Edit item' : 'Add item'}
+          <Text className="text-lg font-extrabold tracking-tight text-app-text">
+            {isEditing ? 'Edit Item' : 'New Reminder'}
           </Text>
           {keyboardVisible ? (
             <Pressable
               accessibilityLabel="Dismiss keyboard"
               accessibilityRole="button"
-              className="min-h-11 w-14 items-end justify-center"
+              className="min-h-11 w-14 items-end justify-center active:opacity-70"
               onPress={Keyboard.dismiss}>
-              <Text className="font-semibold text-app-primary">Done</Text>
+              <Text className="text-sm font-bold text-app-primary">Done</Text>
             </Pressable>
-          ) : <View className="w-14" />}
+          ) : (
+            <View className="w-14" />
+          )}
         </View>
 
         <View ref={viewportRef} style={{ flex: 1 }}>
-        <ScrollView
-          contentContainerStyle={{ paddingBottom: Math.max(32, insets.bottom + 24), paddingHorizontal: 20, paddingTop: 12 }}
-          keyboardDismissMode="on-drag"
-          keyboardShouldPersistTaps="handled"
-          onLayout={() => {
-            if (keyboardVisible) scheduleFocusedInputScroll();
-          }}
-          onScroll={(event) => { scrollOffset.current = event.nativeEvent.contentOffset.y; }}
-          ref={scrollRef}
-          scrollEventThrottle={16}
-          style={{ flex: 1 }}>
-        <Text className="mb-2 mt-8 text-sm font-semibold text-app-text">Name</Text>
-        <TextInput
-          accessibilityLabel="Item name"
-          className={`rounded-2xl border bg-app-surface px-4 py-4 text-base text-app-text ${fieldErrors.name ? 'border-app-danger' : 'border-app-border'}`}
-          onChangeText={(value) => {
-            setName(value);
-            clearFieldError('name');
-          }}
-          onFocus={() => focusInput(nameInputRef.current)}
-          placeholder="e.g. Car road tax"
-          placeholderTextColor={colors.textSecondary}
-          ref={nameInputRef}
-          value={name}
-        />
-        {fieldErrors.name ? (
-          <Text className="mt-2 text-sm text-app-danger">{fieldErrors.name}</Text>
-        ) : null}
-
-        <Text className="mb-2 mt-6 text-sm font-semibold text-app-text">Category</Text>
-        <View className="flex-row flex-wrap justify-between gap-y-3">
-          {categoryOptions.map((category) => {
-            const selected = category.id === categoryId;
-            return (
-              <Pressable
-                accessibilityRole="radio"
-                accessibilityState={{ selected }}
-                className={`min-h-16 flex-row items-center rounded-2xl border px-3 py-3 ${selected ? 'border-app-primary bg-app-primary-soft' : 'border-app-border bg-app-surface'}`}
-                key={category.id}
-                onPress={() => {
-                  setCategoryId(category.id);
-                  clearFieldError('category');
-                }}
-                style={{ width: '48%' }}>
-                <CategoryIcon color={category.color} icon={category.icon} />
-                <Text className={`ml-3 flex-1 ${selected ? 'font-semibold text-app-primary' : 'text-app-text'}`}>
-                  {category.name}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-        {fieldErrors.category ? (
-          <Text className="mt-2 text-sm text-app-danger">{fieldErrors.category}</Text>
-        ) : null}
-
-        <Text className="mb-2 mt-6 text-sm font-semibold text-app-text">Date type</Text>
-        <View className="flex-row gap-2">
-          {DATE_TYPES.map((option) => {
-            const selected = option.value === dateType;
-            return (
-              <Pressable
-                className={`flex-1 rounded-xl border px-2 py-3 ${selected ? 'border-app-primary bg-app-primary' : 'border-app-border bg-app-surface'}`}
-                key={option.value}
-                onPress={() => setDateType(option.value)}>
-                <Text className={`text-center text-sm ${selected ? 'font-semibold text-white' : 'text-app-text'}`}>
-                  {option.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        <Text className="mb-2 mt-6 text-sm font-semibold text-app-text">Target date</Text>
-        <Pressable
-          accessibilityHint="Opens the calendar picker"
-          accessibilityLabel={`Target date, ${formatDateForDisplay(targetDate)}`}
-          accessibilityRole="button"
-          className={`flex-row items-center rounded-2xl border bg-app-surface px-4 py-4 active:opacity-80 ${fieldErrors.targetDate ? 'border-app-danger' : 'border-app-border'}`}
-          onPress={() => setShowDatePicker(true)}>
-          <View className="mr-3 h-10 w-10 items-center justify-center rounded-xl bg-app-primary-soft">
-            <CalendarDays color={colors.primary} size={21} strokeWidth={2} />
-          </View>
-          <View className="flex-1">
-            <Text className="text-base font-semibold text-app-text">
-              {formatDateForDisplay(targetDate)}
+          <ScrollView
+            contentContainerStyle={{
+              paddingBottom: Math.max(32, insets.bottom + 24),
+              paddingHorizontal: 20,
+              paddingTop: 8,
+            }}
+            keyboardDismissMode="on-drag"
+            keyboardShouldPersistTaps="handled"
+            onLayout={() => {
+              if (keyboardVisible) scheduleFocusedInputScroll();
+            }}
+            onScroll={(event) => {
+              scrollOffset.current = event.nativeEvent.contentOffset.y;
+            }}
+            ref={scrollRef}
+            scrollEventThrottle={16}
+            showsVerticalScrollIndicator={false}
+            style={{ flex: 1 }}>
+            {/* Section 1: Item Basic Info */}
+            <Text className="mb-2 mt-4 text-[11px] font-bold uppercase tracking-[1.5px] text-app-muted">
+              General Info
             </Text>
-            <Text className="mt-1 text-xs text-app-muted">Tap to choose another date</Text>
-          </View>
-          <Text className="text-xl text-app-muted">›</Text>
-        </Pressable>
-        {fieldErrors.targetDate ? (
-          <Text className="mt-2 text-sm text-app-danger">{fieldErrors.targetDate}</Text>
-        ) : null}
-
-        {showDatePicker ? (
-          <View className={Platform.OS === 'ios' ? 'mt-3 rounded-2xl border border-app-border bg-app-surface p-3' : undefined}>
-            <DateTimePicker
-              accentColor={colors.primaryFill}
-              display={Platform.OS === 'ios' ? 'inline' : 'default'}
-              mode="date"
-              onDismiss={() => setShowDatePicker(false)}
-              onValueChange={(_, selectedDate) => {
-                setTargetDate(toStoredDate(selectedDate));
-                clearFieldError('targetDate');
-                if (Platform.OS !== 'ios') setShowDatePicker(false);
-              }}
-              presentation="dialog"
-              themeVariant={resolvedTheme}
-              value={parseStoredDate(targetDate) ?? new Date()}
-            />
-            {Platform.OS === 'ios' ? (
-              <Pressable
-                accessibilityRole="button"
-                className="mt-2 self-end rounded-xl bg-app-primary-soft px-4 py-2"
-                onPress={() => setShowDatePicker(false)}>
-                <Text className="font-semibold text-app-primary">Done</Text>
-              </Pressable>
-            ) : null}
-          </View>
-        ) : null}
-
-        <View className="mt-6 flex-row items-center justify-between rounded-2xl border border-app-border bg-app-surface p-4">
-          <View className="mr-4 flex-1">
-            <Text className="font-semibold text-app-text">Repeat yearly</Text>
-            <Text className="mt-1 text-sm text-app-muted">Keep the same month and day by default.</Text>
-          </View>
-          <Switch
-            onValueChange={setRepeatsYearly}
-            trackColor={{ false: colors.border, true: colors.primarySoft }}
-            thumbColor={repeatsYearly ? colors.primaryFill : colors.surface}
-            value={repeatsYearly}
-          />
-        </View>
-
-        <Text className="mb-2 mt-6 text-sm font-semibold text-app-text">Importance</Text>
-        <View className="flex-row gap-2">
-          {IMPORTANCE_OPTIONS.map((option) => {
-            const selected = option === importance;
-            return (
-              <Pressable
-                className={`flex-1 rounded-2xl border px-3 py-3 ${selected ? 'border-app-primary bg-app-primary' : 'border-app-border bg-app-surface'}`}
-                key={option}
-                onPress={() => setImportance(option)}>
-                <Text className={`text-center capitalize ${selected ? 'font-semibold text-white' : 'text-app-text'}`}>
-                  {option}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        <View className="mt-7 rounded-3xl border border-app-border bg-app-surface p-5">
-          <View className="flex-row items-center justify-between">
-            <Text className="text-base font-bold text-app-text">Remind me</Text>
-            <Text className="text-xs font-semibold text-app-primary">
-              {reminderDays.length} selected
-            </Text>
-          </View>
-          <Text className="mt-1 text-sm leading-5 text-app-muted">
-            Choose any number of times before the target date.
-          </Text>
-          <View className="mt-5 flex-row flex-wrap justify-between gap-y-2">
-            {REMINDER_PRESETS.map(({ days, label }) => {
-              const selected = reminderDays.includes(days);
-              return (
-                <Pressable
-                  accessibilityLabel={days === 0 ? 'Remind on the due day' : `Remind ${days} days before`}
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: selected }}
-                  className={`min-h-12 flex-row items-center justify-center rounded-xl border px-3 active:opacity-70 ${selected ? 'border-app-primary bg-app-primary-soft' : 'border-app-border bg-app-bg'}`}
-                  key={days}
-                  onPress={() => setReminderDays((current) => toggleReminderDay(current, days))}
-                  style={{ width: '48%' }}>
-                  {selected ? <Check color={colors.primary} size={16} strokeWidth={2.5} /> : null}
-                  <Text className={`text-sm font-semibold ${selected ? 'ml-2 text-app-primary' : 'text-app-text'}`}>
-                    {label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          <View className="mt-5 border-t border-app-border pt-5">
-            <Text className="text-sm font-semibold text-app-text">Custom days before</Text>
-            <View className="mt-2 flex-row gap-2">
+            <View
+              className="rounded-3xl border p-4"
+              style={{ backgroundColor: colors.surface, borderColor: colors.border }}>
+              <Text className="mb-2 text-xs font-bold uppercase tracking-wider text-app-muted">
+                Item Name
+              </Text>
               <TextInput
-                accessibilityLabel="Custom reminder days before"
-                className={`min-h-12 flex-1 rounded-xl border bg-app-bg px-4 text-base text-app-text ${fieldErrors.reminderDays ? 'border-app-danger' : 'border-app-border'}`}
-                keyboardType="number-pad"
+                accessibilityLabel="Item name"
+                className={`rounded-2xl border px-4 py-3.5 text-base text-app-text ${
+                  fieldErrors.name ? 'border-app-danger' : 'border-app-border'
+                }`}
                 onChangeText={(value) => {
-                  setCustomReminderDay(value);
-                  clearFieldError('reminderDays');
+                  setName(value);
+                  clearFieldError('name');
                 }}
-                onFocus={() => focusInput(reminderInputRef.current)}
-                onSubmitEditing={addCustomReminderDay}
-                placeholder="e.g. 45"
+                onFocus={() => focusInput(nameInputRef.current)}
+                placeholder="e.g. Passport Renewal, Car Insurance"
                 placeholderTextColor={colors.textSecondary}
-                ref={reminderInputRef}
-                returnKeyType="done"
-                value={customReminderDay}
+                ref={nameInputRef}
+                style={{ backgroundColor: colors.surfaceInset }}
+                value={name}
               />
-              <Pressable
-                accessibilityLabel="Add custom reminder day"
-                accessibilityRole="button"
-                className="min-h-12 flex-row items-center rounded-xl bg-app-primary px-4 active:opacity-80"
-                onPress={addCustomReminderDay}>
-                <Plus color="#FFFFFF" size={17} />
-                <Text className="ml-1.5 font-semibold text-white">Add</Text>
-              </Pressable>
-            </View>
-            {reminderDays.filter((day) => !REMINDER_PRESETS.some((preset) => preset.days === day)).length > 0 ? (
-              <View className="mt-3 flex-row flex-wrap gap-2">
-                {reminderDays
-                  .filter((day) => !REMINDER_PRESETS.some((preset) => preset.days === day))
-                  .map((day) => (
+              {fieldErrors.name ? (
+                <Text className="mt-1.5 text-xs font-semibold text-app-danger">{fieldErrors.name}</Text>
+              ) : null}
+
+              <Text className="mb-2 mt-5 text-xs font-bold uppercase tracking-wider text-app-muted">
+                Category
+              </Text>
+              <View className="flex-row flex-wrap justify-between gap-y-2.5">
+                {categoryOptions.map((category) => {
+                  const selected = category.id === categoryId;
+                  return (
                     <Pressable
-                      accessibilityLabel={`Remove reminder ${day} days before`}
-                      accessibilityRole="button"
-                      className="min-h-11 flex-row items-center rounded-full bg-app-primary-soft px-4 active:opacity-70"
-                      key={day}
-                      onPress={() => setReminderDays((current) => toggleReminderDay(current, day))}>
-                      <Text className="mr-2 text-sm font-semibold text-app-primary">{day} days</Text>
-                      <X color={colors.primary} size={15} />
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected }}
+                      className="flex-row items-center rounded-2xl px-3 py-2.5 active:opacity-80"
+                      key={category.id}
+                      onPress={() => {
+                        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                        setCategoryId(category.id);
+                        clearFieldError('category');
+                      }}
+                      style={{
+                        width: '48.5%',
+                        backgroundColor: selected ? colors.primarySoft : colors.surfaceInset,
+                        borderWidth: 1.5,
+                        borderColor: selected ? colors.primary : 'transparent',
+                      }}>
+                      <CategoryIcon color={category.color} icon={category.icon} />
+                      <Text
+                        className="ml-2.5 flex-1 text-xs font-bold"
+                        numberOfLines={1}
+                        style={{ color: selected ? colors.primary : colors.text }}>
+                        {category.name}
+                      </Text>
                     </Pressable>
-                  ))}
+                  );
+                })}
               </View>
+              {fieldErrors.category ? (
+                <Text className="mt-1.5 text-xs font-semibold text-app-danger">{fieldErrors.category}</Text>
+              ) : null}
+
+              <Text className="mb-2 mt-5 text-xs font-bold uppercase tracking-wider text-app-muted">
+                Date Type
+              </Text>
+              <View
+                className="flex-row rounded-2xl p-1"
+                style={{ backgroundColor: colors.surfaceInset }}>
+                {DATE_TYPES.map((option) => {
+                  const selected = option.value === dateType;
+                  return (
+                    <Pressable
+                      className="flex-1 rounded-xl py-2 active:opacity-80"
+                      key={option.value}
+                      onPress={() => {
+                        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                        setDateType(option.value);
+                      }}
+                      style={{
+                        backgroundColor: selected ? colors.surface : 'transparent',
+                        shadowColor: selected ? '#000' : 'transparent',
+                        shadowOffset: { width: 0, height: 1 },
+                        shadowOpacity: selected ? 0.08 : 0,
+                        shadowRadius: 2,
+                        elevation: selected ? 2 : 0,
+                      }}>
+                      <Text
+                        className="text-center text-xs font-bold"
+                        style={{ color: selected ? colors.primary : colors.textSecondary }}>
+                        {option.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+
+            {/* Section 2: Target Date & Recurrence */}
+            <Text className="mb-2 mt-7 text-[11px] font-bold uppercase tracking-[1.5px] text-app-muted">
+              Schedule & Timing
+            </Text>
+            <View
+              className="rounded-3xl border p-4"
+              style={{ backgroundColor: colors.surface, borderColor: colors.border }}>
+              <Text className="mb-2 text-xs font-bold uppercase tracking-wider text-app-muted">
+                Target Date
+              </Text>
+              <Pressable
+                accessibilityHint="Opens calendar picker"
+                accessibilityLabel={`Target date, ${formatDateForDisplay(targetDate)}`}
+                accessibilityRole="button"
+                className="flex-row items-center rounded-2xl border px-4 py-3.5 active:opacity-80"
+                onPress={() => {
+                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                  setShowDatePicker(true);
+                }}
+                style={{
+                  backgroundColor: colors.surfaceInset,
+                  borderColor: fieldErrors.targetDate ? colors.danger : colors.border,
+                }}>
+                <View
+                  className="mr-3 h-9 w-9 items-center justify-center rounded-xl"
+                  style={{ backgroundColor: colors.primarySoft }}>
+                  <CalendarDays color={colors.primary} size={18} strokeWidth={2.2} />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-base font-bold text-app-text">
+                    {formatDateForDisplay(targetDate)}
+                  </Text>
+                  <Text className="text-[11px] font-medium text-app-muted">
+                    Tap to adjust date
+                  </Text>
+                </View>
+                <Text className="text-lg text-app-muted">›</Text>
+              </Pressable>
+              {fieldErrors.targetDate ? (
+                <Text className="mt-1.5 text-xs font-semibold text-app-danger">{fieldErrors.targetDate}</Text>
+              ) : null}
+
+              {showDatePicker ? (
+                <View
+                  className={
+                    Platform.OS === 'ios'
+                      ? 'mt-3 rounded-2xl border border-app-border bg-app-surface p-3'
+                      : undefined
+                  }>
+                  <DateTimePicker
+                    accentColor={colors.primaryFill}
+                    display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                    mode="date"
+                    onDismiss={() => setShowDatePicker(false)}
+                    onValueChange={(_, selectedDate) => {
+                      setTargetDate(toStoredDate(selectedDate));
+                      clearFieldError('targetDate');
+                      if (Platform.OS !== 'ios') setShowDatePicker(false);
+                    }}
+                    presentation="dialog"
+                    themeVariant={resolvedTheme}
+                    value={parseStoredDate(targetDate) ?? new Date()}
+                  />
+                  {Platform.OS === 'ios' ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      className="mt-2 self-end rounded-xl px-4 py-2"
+                      onPress={() => setShowDatePicker(false)}
+                      style={{ backgroundColor: colors.primarySoft }}>
+                      <Text className="text-xs font-bold text-app-primary">Done</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              ) : null}
+
+              <View className="mt-5 flex-row items-center justify-between border-t pt-4" style={{ borderColor: colors.border }}>
+                <View className="mr-4 flex-1">
+                  <Text className="text-sm font-bold text-app-text">Repeat Yearly</Text>
+                  <Text className="mt-0.5 text-xs text-app-muted">
+                    Automatically renew on the same calendar day each year.
+                  </Text>
+                </View>
+                <Switch
+                  onValueChange={(val) => {
+                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                    setRepeatsYearly(val);
+                  }}
+                  thumbColor={repeatsYearly ? colors.primaryFill : colors.surface}
+                  trackColor={{ false: colors.border, true: colors.primarySoft }}
+                  value={repeatsYearly}
+                />
+              </View>
+            </View>
+
+            {/* Section 3: Importance Priority */}
+            <Text className="mb-2 mt-7 text-[11px] font-bold uppercase tracking-[1.5px] text-app-muted">
+              Priority
+            </Text>
+            <View
+              className="rounded-3xl border p-4"
+              style={{ backgroundColor: colors.surface, borderColor: colors.border }}>
+              <View
+                className="flex-row rounded-2xl p-1"
+                style={{ backgroundColor: colors.surfaceInset }}>
+                {IMPORTANCE_OPTIONS.map((option) => {
+                  const selected = option === importance;
+                  const isHigh = option === 'high';
+                  return (
+                    <Pressable
+                      className="flex-1 rounded-xl py-2.5 active:opacity-80"
+                      key={option}
+                      onPress={() => {
+                        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                        setImportance(option);
+                      }}
+                      style={{
+                        backgroundColor: selected
+                          ? isHigh
+                            ? colors.danger
+                            : colors.primaryFill
+                          : 'transparent',
+                        shadowColor: selected ? '#000' : 'transparent',
+                        shadowOffset: { width: 0, height: 1 },
+                        shadowOpacity: selected ? 0.15 : 0,
+                        shadowRadius: 2,
+                        elevation: selected ? 2 : 0,
+                      }}>
+                      <Text
+                        className="text-center text-xs font-bold capitalize"
+                        style={{ color: selected ? '#FFFFFF' : colors.textSecondary }}>
+                        {option}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+
+            {/* Section 4: Reminders Configuration */}
+            <Text className="mb-2 mt-7 text-[11px] font-bold uppercase tracking-[1.5px] text-app-muted">
+              Reminders Schedule
+            </Text>
+            <View
+              className="rounded-3xl border p-4"
+              style={{ backgroundColor: colors.surface, borderColor: colors.border }}>
+              <View className="flex-row items-center justify-between">
+                <Text className="text-sm font-bold text-app-text">Notify in advance</Text>
+                <View
+                  className="rounded-full px-2.5 py-0.5"
+                  style={{ backgroundColor: colors.primarySoft }}>
+                  <Text className="text-[11px] font-bold text-app-primary">
+                    {reminderDays.length} active
+                  </Text>
+                </View>
+              </View>
+              <Text className="mt-1 text-xs leading-5 text-app-muted">
+                Duewise will alert you at 9:00 AM on each scheduled milestone.
+              </Text>
+
+              {/* Preset Chips */}
+              <View className="mt-4 flex-row flex-wrap justify-between gap-y-2">
+                {REMINDER_PRESETS.map(({ days, label }) => {
+                  const selected = reminderDays.includes(days);
+                  return (
+                    <Pressable
+                      accessibilityLabel={days === 0 ? 'Due day' : `${days} days before`}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: selected }}
+                      className="flex-row items-center justify-center rounded-2xl border px-3 py-3 active:opacity-75"
+                      key={days}
+                      onPress={() => {
+                        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                        setReminderDays((current) => toggleReminderDay(current, days));
+                      }}
+                      style={{
+                        width: '48.5%',
+                        backgroundColor: selected ? colors.primarySoft : colors.surfaceInset,
+                        borderColor: selected ? colors.primary : 'transparent',
+                      }}>
+                      {selected ? (
+                        <Check color={colors.primary} size={15} strokeWidth={2.5} style={{ marginRight: 6 }} />
+                      ) : null}
+                      <Text
+                        className="text-xs font-bold"
+                        style={{ color: selected ? colors.primary : colors.text }}>
+                        {label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              {/* Custom reminder day */}
+              <View className="mt-5 border-t pt-4" style={{ borderColor: colors.border }}>
+                <Text className="text-xs font-bold uppercase tracking-wider text-app-muted">
+                  Custom days before
+                </Text>
+                <View className="mt-2 flex-row gap-2">
+                  <TextInput
+                    accessibilityLabel="Custom reminder days before"
+                    className="min-h-12 flex-1 rounded-2xl border px-4 text-sm font-semibold text-app-text"
+                    keyboardType="number-pad"
+                    onChangeText={(value) => {
+                      setCustomReminderDay(value);
+                      clearFieldError('reminderDays');
+                    }}
+                    onFocus={() => focusInput(reminderInputRef.current)}
+                    onSubmitEditing={addCustomReminderDay}
+                    placeholder="e.g. 45"
+                    placeholderTextColor={colors.textSecondary}
+                    ref={reminderInputRef}
+                    returnKeyType="done"
+                    style={{
+                      backgroundColor: colors.surfaceInset,
+                      borderColor: fieldErrors.reminderDays ? colors.danger : colors.border,
+                    }}
+                    value={customReminderDay}
+                  />
+                  <Pressable
+                    accessibilityLabel="Add custom reminder day"
+                    accessibilityRole="button"
+                    className="min-h-12 flex-row items-center rounded-2xl px-5 active:opacity-80"
+                    onPress={() => {
+                      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                      addCustomReminderDay();
+                    }}
+                    style={{ backgroundColor: colors.primaryFill }}>
+                    <Plus color="#FFFFFF" size={16} strokeWidth={2.5} />
+                    <Text className="ml-1 text-xs font-bold text-white">Add</Text>
+                  </Pressable>
+                </View>
+
+                {reminderDays.filter((day) => !REMINDER_PRESETS.some((preset) => preset.days === day)).length > 0 ? (
+                  <View className="mt-3 flex-row flex-wrap gap-2">
+                    {reminderDays
+                      .filter((day) => !REMINDER_PRESETS.some((preset) => preset.days === day))
+                      .map((day) => (
+                        <Pressable
+                          accessibilityLabel={`Remove reminder ${day} days before`}
+                          accessibilityRole="button"
+                          className="flex-row items-center rounded-full px-3.5 py-1.5 active:opacity-75"
+                          key={day}
+                          onPress={() => {
+                            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                            setReminderDays((current) => toggleReminderDay(current, day));
+                          }}
+                          style={{ backgroundColor: colors.primarySoft }}>
+                          <Text className="mr-1.5 text-xs font-bold text-app-primary">
+                            {day} days
+                          </Text>
+                          <X color={colors.primary} size={13} strokeWidth={2.5} />
+                        </Pressable>
+                      ))}
+                  </View>
+                ) : null}
+
+                {fieldErrors.reminderDays ? (
+                  <Text className="mt-1.5 text-xs font-semibold text-app-danger">
+                    {fieldErrors.reminderDays}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
+
+            {/* Section 5: Notes */}
+            <Text className="mb-2 mt-7 text-[11px] font-bold uppercase tracking-[1.5px] text-app-muted">
+              Notes (Optional)
+            </Text>
+            <View
+              className="rounded-3xl border p-4"
+              style={{ backgroundColor: colors.surface, borderColor: colors.border }}>
+              <TextInput
+                accessibilityLabel="Notes"
+                className="min-h-24 text-sm leading-6 text-app-text"
+                multiline
+                onChangeText={setNotes}
+                onFocus={() => focusInput(notesInputRef.current)}
+                placeholder="Policy number, links, renewal contact, or instructions..."
+                placeholderTextColor={colors.textSecondary}
+                ref={notesInputRef}
+                textAlignVertical="top"
+                value={notes}
+              />
+            </View>
+
+            {submissionError ? (
+              <Text
+                selectable
+                className="mt-5 rounded-2xl bg-app-danger-soft p-4 text-xs font-semibold text-app-danger">
+                {submissionError}
+              </Text>
             ) : null}
-            {fieldErrors.reminderDays ? (
-              <Text className="mt-2 text-sm text-app-danger">{fieldErrors.reminderDays}</Text>
-            ) : null}
-          </View>
-          <Text className="mt-4 text-xs leading-5 text-app-muted">
-            Due day means the date itself. Deselect all options for no notifications.
-          </Text>
+          </ScrollView>
         </View>
 
-        <Text className="mb-2 mt-6 text-sm font-semibold text-app-text">Notes (optional)</Text>
-        <TextInput
-          accessibilityLabel="Notes"
-          className="min-h-28 rounded-2xl border border-app-border bg-app-surface px-4 py-4 text-base text-app-text"
-          multiline
-          onChangeText={setNotes}
-          onFocus={() => focusInput(notesInputRef.current)}
-          placeholder="Policy number, renewal instructions, or anything useful"
-          placeholderTextColor={colors.textSecondary}
-          ref={notesInputRef}
-          textAlignVertical="top"
-          value={notes}
-        />
-
-        {submissionError ? (
-          <Text selectable className="mt-5 rounded-2xl bg-app-danger-soft p-4 text-sm text-app-danger">
-            {submissionError}
-          </Text>
-        ) : null}
-
-        </ScrollView>
-        </View>
-
+        {/* Bottom Save Action Bar */}
         <View
-          className="border-t border-app-border bg-app-surface px-5 pt-3"
-          style={{ paddingBottom: Math.max(insets.bottom, 12) }}>
+          className="border-t px-5 pt-3"
+          style={{
+            backgroundColor: colors.surface,
+            borderColor: colors.border,
+            paddingBottom: Math.max(insets.bottom, 14),
+          }}>
           <Pressable
-            className="rounded-2xl bg-app-primary px-5 py-4 active:opacity-80 disabled:opacity-50"
+            accessibilityRole="button"
+            className="items-center justify-center rounded-2xl py-4 active:opacity-85 disabled:opacity-50"
             disabled={isSaving}
-            onPress={saveItem}>
-            <Text className="text-center text-base font-semibold text-white">
-              {isSaving ? 'Saving...' : isEditing ? 'Save changes' : 'Save item'}
+            onPress={saveItem}
+            style={{
+              backgroundColor: colors.primaryFill,
+              shadowColor: colors.primary,
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.25,
+              shadowRadius: 8,
+              elevation: 4,
+            }}>
+            <Text className="text-base font-bold text-white">
+              {isSaving ? 'Saving item...' : isEditing ? 'Save Changes' : 'Create Reminder'}
             </Text>
           </Pressable>
         </View>
@@ -532,3 +714,4 @@ export default function NewItemScreen() {
     </View>
   );
 }
+
