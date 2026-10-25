@@ -1,3 +1,4 @@
+import './support/register-typescript.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 

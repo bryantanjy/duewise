@@ -1,3 +1,5 @@
+import { repeatLabel } from './recurrence';
+
 export type CalendarEventSource = {
   categoryColor: string | null;
   categoryName: string | null;
@@ -5,6 +7,7 @@ export type CalendarEventSource = {
   importance: string;
   name: string;
   repeatType: string;
+  repeatInterval?: number;
   targetDate: string;
 };
 
@@ -25,7 +28,7 @@ export function buildCalendarEventModel(
 
   return {
     categoryColor: item.categoryColor || '#737373',
-    categoryLabel: `${categoryName}${item.repeatType === 'yearly' ? ' · Yearly' : ''}`,
+    categoryLabel: `${categoryName}${item.repeatType !== 'none' ? ` \u00b7 ${repeatLabel(item.repeatType, item.repeatInterval)}` : ''}`,
     date: occurrenceDate,
     highImportance: item.importance === 'high',
     id: item.id,

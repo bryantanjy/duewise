@@ -6,7 +6,6 @@ import { db } from '@/db';
 import { itemHistory, items, notificationCleanup, reminders } from '@/db/schema';
 import {
   createItemOperations,
-  oldNotificationIds,
   type ItemOperationRepository,
   type StoredReminder,
 } from '@/services/item-operations';
@@ -34,8 +33,10 @@ export type CreateItemInput = {
   name: string;
   notes?: string;
   reminderDays: number[];
-  repeatType: 'none' | 'yearly';
+  repeatType: 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'custom';
+  repeatInterval?: number;
   targetDate: string;
+  reminderTime?: string;
 };
 
 export type CreateItemResult = {
@@ -54,7 +55,9 @@ function itemValues(input: CreateItemInput) {
     name: input.name.trim(),
     notes: input.notes?.trim() || null,
     repeatType: input.repeatType,
+    repeatInterval: input.repeatInterval ?? 1,
     targetDate: input.targetDate,
+    reminderTime: input.reminderTime ?? '09:00',
   };
 }
 
@@ -90,13 +93,19 @@ const repository: ItemOperationRepository = {
     return db.transaction((tx) => {
       const [item] = tx.select().from(items).where(eq(items.id, itemId)).all();
       if (!item) return undefined;
-      const rows = tx.select({ daysBefore: reminders.daysBefore, notificationId: reminders.notificationId })
+      const rows = tx.select({ daysBefore: reminders.daysBefore, notificationId: reminders.notificationId, isSnooze: reminders.isSnooze })
         .from(reminders).where(eq(reminders.itemId, itemId)).orderBy(reminders.id).all();
       return { item, reminders: rows };
     });
   },
   async commitCreatedReminders(itemId, rows) {
     db.transaction((tx) => insertReminders(tx, itemId, rows));
+  },
+  async commitRescheduledReminders(itemId, rows, oldIds) {
+    db.transaction((tx) => {
+      replaceReminders(tx, itemId, rows);
+      enqueueOldIds(tx, oldIds);
+    });
   },
   async commitEdit({ input, itemId, oldNotificationIds: ids, reminders: rows }) {
     db.transaction((tx) => {
@@ -168,26 +177,76 @@ async function reportCompensationFailure<T>(operation: string, work: () => Promi
   }
 }
 
+// Keep UI and notification actions for the same item in order across asynchronous scheduling.
+const pendingMutations = new Map<number, Promise<void>>();
+async function withItemMutation<T>(itemId: number, work: () => Promise<T>): Promise<T> {
+  const previous = pendingMutations.get(itemId) ?? Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => { release = resolve; });
+  pendingMutations.set(itemId, current);
+  await previous;
+  try { return await work(); }
+  finally {
+    release();
+    if (pendingMutations.get(itemId) === current) pendingMutations.delete(itemId);
+  }
+}
+
 export async function createItem(input: CreateItemInput): Promise<CreateItemResult> {
   return reportCompensationFailure('createItem', () => operations.createItem(input));
 }
 
+export async function rescheduleItem(itemId: number): Promise<CreateItemResult> {
+  return withItemMutation(itemId, () => reportCompensationFailure('rescheduleItem', () => operations.rescheduleItem(itemId)));
+}
+
 export async function updateItem(itemId: number, input: CreateItemInput): Promise<CreateItemResult> {
-  return reportCompensationFailure('updateItem', () => operations.updateItem(itemId, input));
+  return withItemMutation(itemId, () => reportCompensationFailure('updateItem', () => operations.updateItem(itemId, input)));
 }
 
 export async function renewItem(itemId: number): Promise<CreateItemResult> {
-  return reportCompensationFailure('renewItem', () => operations.renewItem(itemId));
+  return withItemMutation(itemId, () => reportCompensationFailure('renewItem', () => operations.renewItem(itemId)));
 }
 
 export async function archiveItem(itemId: number): Promise<void> {
-  return reportCompensationFailure('archiveItem', () => operations.archiveItem(itemId));
+  return withItemMutation(itemId, () => reportCompensationFailure('archiveItem', () => operations.archiveItem(itemId)));
 }
 
 export async function restoreItem(itemId: number): Promise<CreateItemResult> {
-  return reportCompensationFailure('restoreItem', () => operations.restoreItem(itemId));
+  return withItemMutation(itemId, () => reportCompensationFailure('restoreItem', () => operations.restoreItem(itemId)));
 }
 
 export async function deleteItem(itemId: number): Promise<void> {
-  return reportCompensationFailure('deleteItem', () => operations.deleteItem(itemId));
+  return withItemMutation(itemId, () => reportCompensationFailure('deleteItem', () => operations.deleteItem(itemId)));
+}
+
+
+export async function completeItem(itemId: number, expectedTargetDate?: string) {
+  return withItemMutation(itemId, async () => {
+    const bundle = await repository.getItemBundle(itemId);
+    if (!bundle || bundle.item.archived || (expectedTargetDate && bundle.item.targetDate !== expectedTargetDate)) return;
+    if (bundle.item.repeatType === 'none') await operations.archiveItem(itemId);
+    else await operations.renewItem(itemId);
+  });
+}
+
+export async function snoozeItem(itemId: number, expectedTargetDate: string, requestId: string) {
+  return withItemMutation(itemId, () => snoozeItemUnlocked(itemId, expectedTargetDate, requestId));
+}
+
+async function snoozeItemUnlocked(itemId: number, expectedTargetDate: string, requestId: string) {
+  const bundle = await repository.getItemBundle(itemId);
+  if (!bundle || bundle.item.archived || bundle.item.targetDate !== expectedTargetDate) return;
+  const notificationId = `duewise_snooze_${requestId}`;
+  if (bundle.reminders.some((row) => row.notificationId === notificationId)) return;
+  const service = await loadNotificationService();
+  if (!service) throw new Error('Notifications are unavailable in this environment.');
+  const createdId = await service.scheduleSnoozedReminder({ itemId, itemName: bundle.item.name, targetDate: expectedTargetDate, requestId });
+  try {
+    db.insert(reminders).values({ itemId, daysBefore: 0, isSnooze: true, notificationId: createdId }).run();
+  } catch (error) {
+    await enqueueNotificationCleanup([createdId]);
+    await processNotificationCleanup();
+    throw error;
+  }
 }

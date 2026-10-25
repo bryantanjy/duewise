@@ -2,19 +2,19 @@
   "expo": {
     "name": "Duewise",
     "slug": "life-reminder",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
-    "backgroundColor": "#F7F5F1",
+    "backgroundColor": "#F5F3F8",
     "icon": "./assets/images/icon.png",
     "scheme": "lifereminder",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "backgroundColor": "#F7F5F1",
+      "backgroundColor": "#F5F3F8",
       "icon": "./assets/images/icon.png",
       "userInterfaceStyle": "automatic"
     },
     "android": {
-      "backgroundColor": "#F7F5F1",
+      "backgroundColor": "#F5F3F8",
       "adaptiveIcon": {
         "backgroundColor": "#3B3468",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -46,7 +46,7 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 94,
           "dark": {
-            "backgroundColor": "#101018",
+            "backgroundColor": "#0B0A0F",
             "image": "./assets/images/splash-icon.png"
           }
         }

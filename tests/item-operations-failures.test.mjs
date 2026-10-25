@@ -105,14 +105,14 @@ test('missing edit and renew fail before scheduling', async (t) => {
   assert.equal(scheduled, 0);
 });
 
-test('non-yearly and archived yearly items cannot renew or schedule reminders', async (t) => {
+test('one-time and archived yearly items cannot renew or schedule reminders', async (t) => {
   let scheduled = 0;
   const { repository, operations } = setup(t, { schedule: async () => { scheduled += 1; return null; } });
   const nonYearly = await repository.createItemRecord({ ...input, repeatType: 'none' });
   const archived = await repository.createItemRecord(input);
   await repository.commitArchive({ itemId: archived, oldNotificationIds: [] });
-  await assert.rejects(operations.renewItem(nonYearly), /Only active yearly items can be renewed\./);
-  await assert.rejects(operations.renewItem(archived), /Only active yearly items can be renewed\./);
+  await assert.rejects(operations.renewItem(nonYearly), /Only active repeating items can be renewed\./);
+  await assert.rejects(operations.renewItem(archived), /Only active repeating items can be renewed\./);
   assert.equal(scheduled, 0);
 });
 

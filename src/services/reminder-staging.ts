@@ -2,6 +2,7 @@ export type ReminderStagingInput = {
   itemId: number;
   itemName: string;
   targetDate: string;
+  reminderTime?: string;
   reminderDays: number[];
 };
 
@@ -10,6 +11,7 @@ export type ReminderScheduleInput = {
   itemId: number;
   itemName: string;
   targetDate: string;
+  reminderTime?: string;
 };
 
 export type ReminderSchedule = (
@@ -17,7 +19,7 @@ export type ReminderSchedule = (
 ) => Promise<string | null>;
 
 export type StagedReminderResult = {
-  rows: Array<{ daysBefore: number; notificationId: string | null }>;
+  rows: { daysBefore: number; notificationId: string | null }[];
   createdNotificationIds: string[];
   skippedReminderCount: number;
 };
@@ -49,6 +51,7 @@ export async function stageReminders(
         itemId: input.itemId,
         itemName: input.itemName,
         targetDate: input.targetDate,
+        ...(input.reminderTime ? { reminderTime: input.reminderTime } : {}),
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

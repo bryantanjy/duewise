@@ -1,0 +1,1 @@
+ALTER TABLE `reminders` ADD `is_snooze` integer DEFAULT false NOT NULL;

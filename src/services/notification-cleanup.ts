@@ -22,7 +22,7 @@ async function loadDeviceCancel(): Promise<CancelNotification | undefined> {
   return deviceNotificationAdapter.cancel;
 }
 
-export async function enqueueNotificationCleanup(ids: Array<string | null>) {
+export async function enqueueNotificationCleanup(ids: (string | null)[]) {
   const notificationIds = uniqueNotificationIds(ids);
   if (notificationIds.length === 0) return;
 

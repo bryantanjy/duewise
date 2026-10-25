@@ -1,26 +1,26 @@
 import { eq } from 'drizzle-orm';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
-import DateTimePicker from '@expo/ui/community/datetime-picker';
+import { DateTimePicker } from '@expo/ui/community/datetime-picker';
 import { router, useLocalSearchParams } from 'expo-router';
-import { CalendarDays, Check, Plus, X } from 'lucide-react-native';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { CalendarDays, Check, Clock, X } from 'lucide-react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
-  Switch,
   Text,
   TextInput,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
 
 import { db } from '@/db';
 
 import { categories, items, reminders } from '@/db/schema';
+import { DisclosureRow, FormError, FormLabel, FormRow, SelectionSheet } from '@/components/items/ReminderFormControls';
 import CategoryIcon from '@/components/categories/CategoryIcon';
 import { useTheme } from '@/hooks/use-theme';
 import { useAppearance } from '@/contexts/appearance';
@@ -41,6 +41,10 @@ import {
   toggleReminderDay,
 } from '@/utils/reminder-selection';
 
+import { DEFAULT_REMINDER_TIME, formatReminderTime, reminderDateFor, toStoredTime } from '@/utils/reminder-time';
+
+import { REPEAT_OPTIONS, repeatLabel, type RepeatType } from '@/utils/recurrence';
+
 const categoryQuery = db.select().from(categories).orderBy(categories.id);
 const DATE_TYPES = [
   { label: 'Expiry', value: 'expiry' },
@@ -60,7 +64,7 @@ export default function NewItemScreen() {
   const colors = useTheme();
   const { resolvedTheme } = useAppearance();
   const insets = useSafeAreaInsets();
-  const { editId } = useLocalSearchParams<{ editId?: string }>();
+  const { editId, section, date } = useLocalSearchParams<{ editId?: string; section?: string; date?: string }>();
   const parsedEditId = Number(editId);
   const safeEditId = Number.isInteger(parsedEditId) ? parsedEditId : -1;
   const isEditing = safeEditId > 0;
@@ -72,24 +76,40 @@ export default function NewItemScreen() {
     () => db.select().from(reminders).where(eq(reminders.itemId, safeEditId)),
     [safeEditId],
   );
-  const { data: categoryOptions } = useLiveQuery(categoryQuery);
-  const { data: editItemRows, updatedAt: editItemUpdatedAt } = useLiveQuery(editItemQuery);
-  const { data: editReminderRows, updatedAt: editReminderUpdatedAt } = useLiveQuery(editReminderQuery);
+  const { data: categoryOptions, error: categoryError } = useLiveQuery(categoryQuery);
+  const { data: editItemRows, updatedAt: editItemUpdatedAt, error: editItemError } = useLiveQuery(editItemQuery);
+  const { data: editReminderRows, updatedAt: editReminderUpdatedAt, error: editReminderError } = useLiveQuery(editReminderQuery);
   const didHydrateEdit = useRef(false);
+  const saveLock = useRef(false);
+  const alertsOffset = useRef(0);
+  const repeatOffset = useRef(0);
+  const didScrollToSchedule = useRef(false);
+  const scheduleOffset = useRef<number | undefined>(undefined);
   const viewportRef = useRef<View>(null);
   const scrollRef = useRef<ScrollView>(null);
   const nameInputRef = useRef<TextInput>(null);
   const reminderInputRef = useRef<TextInput>(null);
+  const repeatInputRef = useRef<TextInput>(null);
   const notesInputRef = useRef<TextInput>(null);
   const focusedInput = useRef<TextInput | null>(null);
   const scrollOffset = useRef(0);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [name, setName] = useState('');
-  const [categoryId, setCategoryId] = useState<number>();
+  const [categoryOverride, setCategoryId] = useState<number>();
+  const categoryId = categoryOverride ?? categoryOptions[0]?.id;
   const [dateType, setDateType] = useState<(typeof DATE_TYPES)[number]['value']>('expiry');
-  const [targetDate, setTargetDate] = useState(initialTargetDate);
+  const [targetDate, setTargetDate] = useState(() => {
+    if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      const parsed = parseStoredDate(date);
+      if (parsed && !Number.isNaN(parsed.getTime()) && toStoredDate(parsed) === date) return date;
+    }
+    return initialTargetDate();
+  });
+  const [reminderTime, setReminderTime] = useState(DEFAULT_REMINDER_TIME);
+  const [showTimePicker, setShowTimePicker] = useState(false);
   const [importance, setImportance] = useState<(typeof IMPORTANCE_OPTIONS)[number]>('normal');
-  const [repeatsYearly, setRepeatsYearly] = useState(true);
+  const [repeatType, setRepeatType] = useState<RepeatType>('yearly');
+  const [repeatInterval, setRepeatInterval] = useState('1');
   const [reminderDays, setReminderDays] = useState<number[]>(DEFAULT_REMINDER_DAYS);
   const [customReminderDay, setCustomReminderDay] = useState('');
   const [notes, setNotes] = useState('');
@@ -99,20 +119,17 @@ export default function NewItemScreen() {
   const [submissionError, setSubmissionError] = useState<string>();
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [selection, setSelection] = useState<'category' | 'repeat' | 'dateType'>();
+  const [showAlerts, setShowAlerts] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
+  const [intervalError, setIntervalError] = useState<string>();
+  const editReady = !isEditing || Boolean(editItemRows[0] && editItemUpdatedAt && editReminderUpdatedAt);
+  const loadError = categoryError ?? editItemError ?? editReminderError;
+  const missingEditItem = isEditing && editItemUpdatedAt && editItemRows.length === 0;
 
-  useEffect(() => {
-    const shown = Keyboard.addListener('keyboardDidShow', () => {
-      setKeyboardVisible(true);
-      scheduleFocusedInputScroll();
-    });
-    const hidden = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
-    return () => {
-      shown.remove();
-      hidden.remove();
-    };
-  }, []);
 
-  function scrollFocusedInputIntoView() {
+
+  const scrollFocusedInputIntoView = useCallback(() => {
     const input = focusedInput.current;
     const scroller = scrollRef.current;
     if (!input || !scroller) return;
@@ -131,11 +148,24 @@ export default function NewItemScreen() {
         }
       });
     });
-  }
+  }, []);
 
-  function scheduleFocusedInputScroll() {
+  const scheduleFocusedInputScroll = useCallback(() => {
     requestAnimationFrame(() => requestAnimationFrame(scrollFocusedInputIntoView));
-  }
+  }, [scrollFocusedInputIntoView]);
+
+  useEffect(() => {
+    const shown = Keyboard.addListener('keyboardDidShow', () => {
+      setKeyboardVisible(true);
+      scheduleFocusedInputScroll();
+    });
+    const hidden = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
+    return () => {
+      shown.remove();
+      hidden.remove();
+    };
+  }, [scheduleFocusedInputScroll]);
+
 
   function focusInput(input: TextInput | null) {
     focusedInput.current = input;
@@ -151,11 +181,6 @@ export default function NewItemScreen() {
     });
   }
 
-  useEffect(() => {
-    if (categoryId === undefined && categoryOptions.length > 0) {
-      setCategoryId(categoryOptions[0].id);
-    }
-  }, [categoryId, categoryOptions]);
 
   useEffect(() => {
     const item = editItemRows[0];
@@ -166,11 +191,23 @@ export default function NewItemScreen() {
     setCategoryId(item.categoryId ?? categoryOptions[0]?.id);
     setDateType(item.dateType as (typeof DATE_TYPES)[number]['value']);
     setTargetDate(item.targetDate);
+    setReminderTime(item.reminderTime);
     setImportance(item.importance as (typeof IMPORTANCE_OPTIONS)[number]);
-    setRepeatsYearly(item.repeatType === 'yearly');
-    setReminderDays(normalizeReminderDays(editReminderRows.map(({ daysBefore }) => daysBefore)));
+    setRepeatType(item.repeatType as RepeatType);
+    setRepeatInterval(String(item.repeatInterval));
+    setReminderDays(normalizeReminderDays(editReminderRows.filter((row) => !row.isSnooze).map(({ daysBefore }) => daysBefore)));
     setNotes(item.notes ?? '');
   }, [categoryOptions, editItemRows, editItemUpdatedAt, editReminderRows, editReminderUpdatedAt, isEditing]);
+
+  const scrollToSchedule = useCallback(() => {
+    if (section !== 'schedule' || !didHydrateEdit.current || didScrollToSchedule.current || scheduleOffset.current === undefined) return;
+    didScrollToSchedule.current = true;
+    scrollRef.current?.scrollTo({ y: Math.max(0, scheduleOffset.current - 12), animated: false });
+  }, [section]);
+  useEffect(() => {
+    const frame = requestAnimationFrame(scrollToSchedule);
+    return () => cancelAnimationFrame(frame);
+  }, [scrollToSchedule, editItemUpdatedAt, editReminderUpdatedAt]);
 
   function addCustomReminderDay() {
     const result = resolveReminderSelection(reminderDays, customReminderDay);
@@ -184,7 +221,7 @@ export default function NewItemScreen() {
   }
 
   async function saveItem() {
-    if (isSaving) return;
+    if (isSaving || saveLock.current || !editReady || loadError) return;
     setSubmissionError(undefined);
 
     const resolvedReminders = resolveReminderSelection(reminderDays, customReminderDay);
@@ -196,10 +233,23 @@ export default function NewItemScreen() {
     });
     if (resolvedReminders.error) validation.fieldErrors.reminderDays = resolvedReminders.error;
     setFieldErrors(validation.fieldErrors);
+    if (validation.fieldErrors.reminderDays) setShowAlerts(true);
     if (Object.keys(validation.fieldErrors).length > 0 || categoryId === undefined) {
+      if (validation.fieldErrors.name) {
+        scrollRef.current?.scrollTo({ y: 0, animated: false });
+        requestAnimationFrame(() => nameInputRef.current?.focus());
+      } else if (validation.fieldErrors.targetDate) scrollToOffset(scheduleOffset.current ?? 0);
+      else if (validation.fieldErrors.reminderDays) { setShowAlerts(true); scrollToOffset(alertsOffset.current); }
       return;
     }
 
+    if (repeatType === 'custom' && (!/^\d+$/.test(repeatInterval) || Number(repeatInterval) < 1 || Number(repeatInterval) > 3650)) {
+      setIntervalError('Choose a repeat interval from 1 to 3650 days.');
+      scrollToOffset(repeatOffset.current);
+      return;
+    }
+    saveLock.current = true;
+    Keyboard.dismiss();
     setIsSaving(true);
     try {
       const input = {
@@ -209,8 +259,10 @@ export default function NewItemScreen() {
         name,
         notes,
         reminderDays: validation.parsedReminderDays ?? [],
-        repeatType: repeatsYearly ? 'yearly' : 'none',
+        repeatType,
+        repeatInterval: repeatType === 'custom' ? Number(repeatInterval) : 1,
         targetDate,
+        reminderTime,
       } as const;
       const result = isEditing
         ? await updateItem(safeEditId, input)
@@ -227,491 +279,183 @@ export default function NewItemScreen() {
       });
     } catch (error) {
       setSubmissionError(error instanceof Error ? error.message : 'Unable to save this item.');
+      saveLock.current = false;
       setIsSaving(false);
     }
   }
 
-  return (
-    <View
-      className="bg-app-bg"
-      style={{ flex: 1, paddingTop: insets.top }}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={0}
-        style={{ flex: 1 }}>
-        {/* Navigation Bar */}
-        <View className="flex-row items-center justify-between px-5 py-3">
-          <Pressable
-            accessibilityLabel="Cancel and go back"
-            accessibilityRole="button"
-            className="py-1 pr-4 active:opacity-70"
-            onPress={() => {
-              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-              router.back();
-            }}>
-            <Text className="text-sm font-bold text-app-primary">Cancel</Text>
-          </Pressable>
-          <Text className="text-lg font-extrabold tracking-tight text-app-text">
-            {isEditing ? 'Edit Item' : 'New Reminder'}
-          </Text>
-          {keyboardVisible ? (
-            <Pressable
-              accessibilityLabel="Dismiss keyboard"
-              accessibilityRole="button"
-              className="min-h-11 w-14 items-end justify-center active:opacity-70"
-              onPress={Keyboard.dismiss}>
-              <Text className="text-sm font-bold text-app-primary">Done</Text>
-            </Pressable>
-          ) : (
-            <View className="w-14" />
-          )}
-        </View>
+  function scrollToOffset(offset: number) {
+    requestAnimationFrame(() => requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: Math.max(0, offset - 12), animated: false })));
+  }
+  function openSelection(next: 'category' | 'repeat' | 'dateType') {
+    Keyboard.dismiss(); focusedInput.current = null;
+    setShowDatePicker(false); setShowTimePicker(false); setSelection(next);
+  }
+  function toggleOptional(field: 'alerts' | 'notes') {
+    Keyboard.dismiss(); focusedInput.current = null;
+    if (field === 'alerts') setShowAlerts(!showAlerts); else setShowNotes(!showNotes);
+  }
+  const selectedCategory = categoryOptions.find((category) => category.id === categoryId);
+  const alertsSummary = reminderDays.length ? reminderDays.map((day) => day === 0 ? 'due date' : `${day}d`).join(', ') : 'No alerts selected';
+  const panel = { borderWidth: 1, borderColor: colors.border, borderRadius: 14, backgroundColor: colors.surface, overflow: 'hidden' as const };
+  const inputStyle = { minHeight: 52, borderWidth: 1, borderColor: colors.border, borderRadius: 14,
+    paddingHorizontal: 16, paddingVertical: 13, fontSize: 15, lineHeight: 23, color: colors.text, backgroundColor: colors.surface };
+  const selectionOptions = selection === 'category'
+    ? categoryOptions.map((category) => ({ value: category.id as string | number, label: category.name, icon: <CategoryIcon icon={category.icon} color={category.color} /> }))
+    : selection === 'repeat' ? REPEAT_OPTIONS.map((option) => ({ value: option.value as string | number, label: option.label }))
+    : DATE_TYPES.map((option) => ({ value: option.value as string | number, label: option.label }));
 
-        <View ref={viewportRef} style={{ flex: 1 }}>
-          <ScrollView
-            contentContainerStyle={{
-              paddingBottom: Math.max(32, insets.bottom + 24),
-              paddingHorizontal: 20,
-              paddingTop: 8,
-            }}
-            keyboardDismissMode="on-drag"
-            keyboardShouldPersistTaps="handled"
-            onLayout={() => {
-              if (keyboardVisible) scheduleFocusedInputScroll();
-            }}
-            onScroll={(event) => {
-              scrollOffset.current = event.nativeEvent.contentOffset.y;
-            }}
-            ref={scrollRef}
-            scrollEventThrottle={16}
-            showsVerticalScrollIndicator={false}
-            style={{ flex: 1 }}>
-            {/* Section 1: Item Basic Info */}
-            <Text className="mb-2 mt-4 text-[11px] font-bold uppercase tracking-[1.5px] text-app-muted">
-              General Info
-            </Text>
-            <View
-              className="rounded-3xl border p-4"
-              style={{ backgroundColor: colors.surface, borderColor: colors.border }}>
-              <Text className="mb-2 text-xs font-bold uppercase tracking-wider text-app-muted">
-                Item Name
-              </Text>
-              <TextInput
-                accessibilityLabel="Item name"
-                className={`rounded-2xl border px-4 py-3.5 text-base text-app-text ${
-                  fieldErrors.name ? 'border-app-danger' : 'border-app-border'
-                }`}
-                onChangeText={(value) => {
-                  setName(value);
-                  clearFieldError('name');
-                }}
-                onFocus={() => focusInput(nameInputRef.current)}
-                placeholder="e.g. Passport Renewal, Car Insurance"
-                placeholderTextColor={colors.textSecondary}
-                ref={nameInputRef}
-                style={{ backgroundColor: colors.surfaceInset }}
-                value={name}
-              />
-              {fieldErrors.name ? (
-                <Text className="mt-1.5 text-xs font-semibold text-app-danger">{fieldErrors.name}</Text>
-              ) : null}
+  return <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: colors.homeBackground }}>
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+      <View style={{ paddingHorizontal: 22, paddingVertical: 6, width: '100%', maxWidth: 684, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Cancel and go back" onPress={() => router.back()} style={{ minHeight: 48, minWidth: 56, justifyContent: 'center' }}>
+          <Text style={{ fontSize: 14, color: colors.textSecondary }}>Cancel</Text>
+        </Pressable>
+        <Text accessibilityRole="header" style={{ flex: 1, textAlign: 'center', fontSize: 17, lineHeight: 25, fontWeight: '600', color: colors.text, letterSpacing: -0.3 }}>{isEditing ? 'Edit reminder' : 'New reminder'}</Text>
+        {keyboardVisible ? <Pressable accessibilityRole="button" accessibilityLabel="Dismiss keyboard" onPress={Keyboard.dismiss} style={{ minHeight: 48, minWidth: 56, alignItems: 'flex-end', justifyContent: 'center' }}>
+          <Text style={{ fontSize: 14, color: colors.primary }}>Done</Text>
+        </Pressable> : <View style={{ width: 56 }} />}
+      </View>
+      <View ref={viewportRef} style={{ flex: 1 }}>
+        <ScrollView ref={scrollRef} style={{ flex: 1 }} showsVerticalScrollIndicator={false}
+          keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled" scrollEventThrottle={16}
+          onScroll={(event) => { scrollOffset.current = event.nativeEvent.contentOffset.y; }}
+          onLayout={() => { if (keyboardVisible) scheduleFocusedInputScroll(); }}
+          onContentSizeChange={() => { if (keyboardVisible) scheduleFocusedInputScroll(); }}
+          contentContainerStyle={{ paddingHorizontal: 22, paddingTop: 14, paddingBottom: 30 }}>
+          <View style={{ width: '100%', maxWidth: 640, alignSelf: 'center' }}>
+            {loadError || missingEditItem ? <Text accessibilityRole="alert" style={{ fontSize: 13, lineHeight: 21, color: colors.danger, marginBottom: 16 }}>{missingEditItem ? 'This reminder no longer exists. Go back to your reminders.' : 'Unable to load the form. Go back and try again.'}</Text> : null}
+            <FormLabel>Name</FormLabel>
+            <TextInput ref={nameInputRef} accessibilityLabel="Item name" value={name} placeholder="e.g. Passport renewal"
+              placeholderTextColor={colors.textSecondary} returnKeyType="done" onFocus={() => focusInput(nameInputRef.current)}
+              onChangeText={(value) => { setName(value); clearFieldError('name'); }}
+              style={{ ...inputStyle, fontSize: 17, fontWeight: '500', borderColor: fieldErrors.name ? colors.danger : colors.border }} />
+            <FormError message={fieldErrors.name} />
+            <View style={{ ...panel, marginTop: 16 }}>
+              <FormRow label="Category" value={selectedCategory?.name ?? 'Choose a category'}
+                icon={selectedCategory ? <CategoryIcon color={selectedCategory.color} icon={selectedCategory.icon} /> : undefined}
+                onPress={() => openSelection('category')} error={Boolean(fieldErrors.category)} />
+            </View>
+            <FormError message={fieldErrors.category} />
 
-              <Text className="mb-2 mt-5 text-xs font-bold uppercase tracking-wider text-app-muted">
-                Category
-              </Text>
-              <View className="flex-row flex-wrap justify-between gap-y-2.5">
-                {categoryOptions.map((category) => {
-                  const selected = category.id === categoryId;
-                  return (
-                    <Pressable
-                      accessibilityRole="radio"
-                      accessibilityState={{ selected }}
-                      className="flex-row items-center rounded-2xl px-3 py-2.5 active:opacity-80"
-                      key={category.id}
-                      onPress={() => {
-                        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-                        setCategoryId(category.id);
-                        clearFieldError('category');
-                      }}
-                      style={{
-                        width: '48.5%',
-                        backgroundColor: selected ? colors.primarySoft : colors.surfaceInset,
-                        borderWidth: 1.5,
-                        borderColor: selected ? colors.primary : 'transparent',
-                      }}>
-                      <CategoryIcon color={category.color} icon={category.icon} />
-                      <Text
-                        className="ml-2.5 flex-1 text-xs font-bold"
-                        numberOfLines={1}
-                        style={{ color: selected ? colors.primary : colors.text }}>
-                        {category.name}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
+            <View onLayout={(event) => { scheduleOffset.current = event.nativeEvent.layout.y; scrollToSchedule(); }} style={{ marginTop: 26 }}>
+              <FormHeading>When</FormHeading>
+              <View style={panel}>
+                <FormRow label="Date" value={formatDateForDisplay(targetDate)} icon={<CalendarDays size={18} color={colors.textSecondary} strokeWidth={1.7} />}
+                  error={Boolean(fieldErrors.targetDate)} onPress={() => { Keyboard.dismiss(); setShowTimePicker(false); setShowDatePicker(true); }} />
+                <FormRow label="Reminder time" value={formatReminderTime(reminderTime)} icon={<Clock size={18} color={colors.textSecondary} strokeWidth={1.7} />}
+                  divider onPress={() => { Keyboard.dismiss(); setShowDatePicker(false); setShowTimePicker(true); }} />
+                <FormRow label="Date type" value={DATE_TYPES.find((option) => option.value === dateType)?.label ?? 'Custom'} divider onPress={() => openSelection('dateType')} />
               </View>
-              {fieldErrors.category ? (
-                <Text className="mt-1.5 text-xs font-semibold text-app-danger">{fieldErrors.category}</Text>
-              ) : null}
+              <FormError message={fieldErrors.targetDate} />
+              <Text style={{ marginTop: 8, fontSize: 12, lineHeight: 19, color: colors.textSecondary }}>Each alert uses this time, in your local time zone.</Text>
+              {showDatePicker || showTimePicker ? <View style={Platform.OS === 'ios' ? { ...panel, padding: 12, marginTop: 12 } : undefined}>
+                <DateTimePicker accentColor={colors.primaryFill} mode={showTimePicker ? 'time' : 'date'}
+                  display={Platform.OS === 'ios' ? showTimePicker ? 'spinner' : 'inline' : 'default'}
+                  presentation="dialog" themeVariant={resolvedTheme}
+                  value={showTimePicker ? reminderDateFor(targetDate, 0, reminderTime) : parseStoredDate(targetDate) ?? new Date()}
+                  onDismiss={() => { setShowDatePicker(false); setShowTimePicker(false); }}
+                  onValueChange={(_, value) => {
+                    if (showTimePicker) setReminderTime(toStoredTime(value));
+                    else { setTargetDate(toStoredDate(value)); clearFieldError('targetDate'); }
+                    if (Platform.OS !== 'ios') { setShowDatePicker(false); setShowTimePicker(false); }
+                  }} />
+                {Platform.OS === 'ios' ? <Pressable accessibilityRole="button" onPress={() => { setShowDatePicker(false); setShowTimePicker(false); }}
+                  style={{ minHeight: 48, alignSelf: 'flex-end', paddingHorizontal: 16, justifyContent: 'center' }}><Text style={{ color: colors.primary, fontSize: 14 }}>Done</Text></Pressable> : null}
+              </View> : null}
+            </View>
 
-              <Text className="mb-2 mt-5 text-xs font-bold uppercase tracking-wider text-app-muted">
-                Date Type
-              </Text>
-              <View
-                className="flex-row rounded-2xl p-1"
-                style={{ backgroundColor: colors.surfaceInset }}>
-                {DATE_TYPES.map((option) => {
-                  const selected = option.value === dateType;
-                  return (
-                    <Pressable
-                      className="flex-1 rounded-xl py-2 active:opacity-80"
-                      key={option.value}
-                      onPress={() => {
-                        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-                        setDateType(option.value);
-                      }}
-                      style={{
-                        backgroundColor: selected ? colors.surface : 'transparent',
-                        shadowColor: selected ? '#000' : 'transparent',
-                        shadowOffset: { width: 0, height: 1 },
-                        shadowOpacity: selected ? 0.08 : 0,
-                        shadowRadius: 2,
-                        elevation: selected ? 2 : 0,
-                      }}>
-                      <Text
-                        className="text-center text-xs font-bold"
-                        style={{ color: selected ? colors.primary : colors.textSecondary }}>
-                        {option.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
+            <View onLayout={(event) => { repeatOffset.current = event.nativeEvent.layout.y; }} style={{ marginTop: 26 }}>
+              <FormHeading>Repeat & priority</FormHeading>
+              <View style={panel}><FormRow label="Repeat" value={repeatLabel(repeatType, Number(repeatInterval) || 1)} onPress={() => openSelection('repeat')} /></View>
+              {repeatType === 'custom' ? <View style={{ marginTop: 14 }}>
+                <FormLabel>Repeat every (days, 1-3650)</FormLabel>
+                <TextInput ref={repeatInputRef} accessibilityLabel="Repeat interval in days" keyboardType="number-pad" value={repeatInterval} maxLength={4}
+                  onFocus={() => focusInput(repeatInputRef.current)} onChangeText={(value) => { setRepeatInterval(value); setIntervalError(undefined); }}
+                  style={{ ...inputStyle, borderColor: intervalError ? colors.danger : colors.border }} />
+                <FormError message={intervalError} />
+              </View> : null}
+              <Text style={{ marginTop: 8, fontSize: 12, lineHeight: 19, color: colors.textSecondary }}>{repeatType === 'none' ? 'Marking done moves this reminder to your archive.' : 'Mark done to schedule the next occurrence. Missed dates are skipped.'}</Text>
+              <View style={{ marginTop: 18 }}><FormLabel>Priority</FormLabel>
+                <View accessibilityRole="radiogroup" accessibilityLabel="Priority" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  {IMPORTANCE_OPTIONS.map((option) => <Pressable key={option} accessibilityRole="radio" accessibilityState={{ selected: importance === option }}
+                    onPress={() => setImportance(option)} style={({ pressed }) => ({ flex: 1, minHeight: 48, minWidth: 70, padding: 10, justifyContent: 'center', alignItems: 'center', borderRadius: 12, borderWidth: 1,
+                      borderColor: importance === option ? colors.primary : colors.border, backgroundColor: importance === option ? colors.primarySoft : pressed ? colors.surfaceInset : colors.surface })}>
+                    <Text style={{ fontSize: 13, lineHeight: 20, textTransform: 'capitalize', color: importance === option ? colors.primary : colors.text }}>{option}</Text>
+                  </Pressable>)}
+                </View>
               </View>
             </View>
 
-            {/* Section 2: Target Date & Recurrence */}
-            <Text className="mb-2 mt-7 text-[11px] font-bold uppercase tracking-[1.5px] text-app-muted">
-              Schedule & Timing
-            </Text>
-            <View
-              className="rounded-3xl border p-4"
-              style={{ backgroundColor: colors.surface, borderColor: colors.border }}>
-              <Text className="mb-2 text-xs font-bold uppercase tracking-wider text-app-muted">
-                Target Date
-              </Text>
-              <Pressable
-                accessibilityHint="Opens calendar picker"
-                accessibilityLabel={`Target date, ${formatDateForDisplay(targetDate)}`}
-                accessibilityRole="button"
-                className="flex-row items-center rounded-2xl border px-4 py-3.5 active:opacity-80"
-                onPress={() => {
-                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-                  setShowDatePicker(true);
-                }}
-                style={{
-                  backgroundColor: colors.surfaceInset,
-                  borderColor: fieldErrors.targetDate ? colors.danger : colors.border,
-                }}>
-                <View
-                  className="mr-3 h-9 w-9 items-center justify-center rounded-xl"
-                  style={{ backgroundColor: colors.primarySoft }}>
-                  <CalendarDays color={colors.primary} size={18} strokeWidth={2.2} />
+            <View onLayout={(event) => { alertsOffset.current = event.nativeEvent.layout.y; }} style={{ ...panel, marginTop: 26 }}>
+              <DisclosureRow title="Alerts" summary={`${alertsSummary}${customReminderDay.trim() ? ' / custom day pending' : ''}`}
+                expanded={showAlerts} onPress={() => toggleOptional('alerts')} />
+              {showAlerts ? <View style={{ paddingHorizontal: 16, paddingBottom: 18 }}>
+                <Text style={{ fontSize: 12, lineHeight: 19, color: colors.textSecondary, marginBottom: 12 }}>Choose when to be notified before the due date. Leave all options off for no alerts.</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  {REMINDER_PRESETS.map(({ days, label }) => {
+                    const selected = reminderDays.includes(days);
+                    return <Pressable key={days} accessibilityRole="checkbox" accessibilityLabel={days === 0 ? 'Due day' : `${days} days before`}
+                      accessibilityState={{ checked: selected }} onPress={() => { setReminderDays((current) => toggleReminderDay(current, days)); clearFieldError('reminderDays'); }}
+                      style={({ pressed }) => ({ minHeight: 48, paddingHorizontal: 12, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 12, borderWidth: 1,
+                        borderColor: selected ? colors.primary : colors.border, backgroundColor: selected ? colors.primarySoft : pressed ? colors.surfaceInset : colors.surface })}>
+                      {selected ? <Check size={14} color={colors.primary} /> : null}<Text style={{ fontSize: 13, lineHeight: 20, color: selected ? colors.primary : colors.text }}>{label}</Text>
+                    </Pressable>;
+                  })}
                 </View>
-                <View className="flex-1">
-                  <Text className="text-base font-bold text-app-text">
-                    {formatDateForDisplay(targetDate)}
-                  </Text>
-                  <Text className="text-[11px] font-medium text-app-muted">
-                    Tap to adjust date
-                  </Text>
-                </View>
-                <Text className="text-lg text-app-muted">›</Text>
-              </Pressable>
-              {fieldErrors.targetDate ? (
-                <Text className="mt-1.5 text-xs font-semibold text-app-danger">{fieldErrors.targetDate}</Text>
-              ) : null}
-
-              {showDatePicker ? (
-                <View
-                  className={
-                    Platform.OS === 'ios'
-                      ? 'mt-3 rounded-2xl border border-app-border bg-app-surface p-3'
-                      : undefined
-                  }>
-                  <DateTimePicker
-                    accentColor={colors.primaryFill}
-                    display={Platform.OS === 'ios' ? 'inline' : 'default'}
-                    mode="date"
-                    onDismiss={() => setShowDatePicker(false)}
-                    onValueChange={(_, selectedDate) => {
-                      setTargetDate(toStoredDate(selectedDate));
-                      clearFieldError('targetDate');
-                      if (Platform.OS !== 'ios') setShowDatePicker(false);
-                    }}
-                    presentation="dialog"
-                    themeVariant={resolvedTheme}
-                    value={parseStoredDate(targetDate) ?? new Date()}
-                  />
-                  {Platform.OS === 'ios' ? (
-                    <Pressable
-                      accessibilityRole="button"
-                      className="mt-2 self-end rounded-xl px-4 py-2"
-                      onPress={() => setShowDatePicker(false)}
-                      style={{ backgroundColor: colors.primarySoft }}>
-                      <Text className="text-xs font-bold text-app-primary">Done</Text>
+                <View style={{ marginTop: 18 }}><FormLabel>Custom days before</FormLabel>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <TextInput ref={reminderInputRef} accessibilityLabel="Custom reminder days before" keyboardType="number-pad" value={customReminderDay} placeholder="e.g. 60"
+                      placeholderTextColor={colors.textSecondary} onFocus={() => focusInput(reminderInputRef.current)}
+                      onChangeText={(value) => { setCustomReminderDay(value); clearFieldError('reminderDays'); }}
+                      style={{ ...inputStyle, flex: 1, minWidth: 0, minHeight: 48, borderColor: fieldErrors.reminderDays ? colors.danger : colors.border }} />
+                    <Pressable accessibilityRole="button" accessibilityLabel="Add custom reminder day" onPress={addCustomReminderDay}
+                      style={({ pressed }) => ({ minHeight: 48, paddingHorizontal: 15, justifyContent: 'center', borderRadius: 12, backgroundColor: colors.primarySoft, opacity: pressed ? 0.7 : 1 })}>
+                      <Text style={{ fontSize: 13, color: colors.primary }}>Add</Text>
                     </Pressable>
-                  ) : null}
-                </View>
-              ) : null}
-
-              <View className="mt-5 flex-row items-center justify-between border-t pt-4" style={{ borderColor: colors.border }}>
-                <View className="mr-4 flex-1">
-                  <Text className="text-sm font-bold text-app-text">Repeat Yearly</Text>
-                  <Text className="mt-0.5 text-xs text-app-muted">
-                    Automatically renew on the same calendar day each year.
-                  </Text>
-                </View>
-                <Switch
-                  onValueChange={(val) => {
-                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-                    setRepeatsYearly(val);
-                  }}
-                  thumbColor={repeatsYearly ? colors.primaryFill : colors.surface}
-                  trackColor={{ false: colors.border, true: colors.primarySoft }}
-                  value={repeatsYearly}
-                />
-              </View>
-            </View>
-
-            {/* Section 3: Importance Priority */}
-            <Text className="mb-2 mt-7 text-[11px] font-bold uppercase tracking-[1.5px] text-app-muted">
-              Priority
-            </Text>
-            <View
-              className="rounded-3xl border p-4"
-              style={{ backgroundColor: colors.surface, borderColor: colors.border }}>
-              <View
-                className="flex-row rounded-2xl p-1"
-                style={{ backgroundColor: colors.surfaceInset }}>
-                {IMPORTANCE_OPTIONS.map((option) => {
-                  const selected = option === importance;
-                  const isHigh = option === 'high';
-                  return (
-                    <Pressable
-                      className="flex-1 rounded-xl py-2.5 active:opacity-80"
-                      key={option}
-                      onPress={() => {
-                        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-                        setImportance(option);
-                      }}
-                      style={{
-                        backgroundColor: selected
-                          ? isHigh
-                            ? colors.danger
-                            : colors.primaryFill
-                          : 'transparent',
-                        shadowColor: selected ? '#000' : 'transparent',
-                        shadowOffset: { width: 0, height: 1 },
-                        shadowOpacity: selected ? 0.15 : 0,
-                        shadowRadius: 2,
-                        elevation: selected ? 2 : 0,
-                      }}>
-                      <Text
-                        className="text-center text-xs font-bold capitalize"
-                        style={{ color: selected ? '#FFFFFF' : colors.textSecondary }}>
-                        {option}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </View>
-
-            {/* Section 4: Reminders Configuration */}
-            <Text className="mb-2 mt-7 text-[11px] font-bold uppercase tracking-[1.5px] text-app-muted">
-              Reminders Schedule
-            </Text>
-            <View
-              className="rounded-3xl border p-4"
-              style={{ backgroundColor: colors.surface, borderColor: colors.border }}>
-              <View className="flex-row items-center justify-between">
-                <Text className="text-sm font-bold text-app-text">Notify in advance</Text>
-                <View
-                  className="rounded-full px-2.5 py-0.5"
-                  style={{ backgroundColor: colors.primarySoft }}>
-                  <Text className="text-[11px] font-bold text-app-primary">
-                    {reminderDays.length} active
-                  </Text>
-                </View>
-              </View>
-              <Text className="mt-1 text-xs leading-5 text-app-muted">
-                Duewise will alert you at 9:00 AM on each scheduled milestone.
-              </Text>
-
-              {/* Preset Chips */}
-              <View className="mt-4 flex-row flex-wrap justify-between gap-y-2">
-                {REMINDER_PRESETS.map(({ days, label }) => {
-                  const selected = reminderDays.includes(days);
-                  return (
-                    <Pressable
-                      accessibilityLabel={days === 0 ? 'Due day' : `${days} days before`}
-                      accessibilityRole="checkbox"
-                      accessibilityState={{ checked: selected }}
-                      className="flex-row items-center justify-center rounded-2xl border px-3 py-3 active:opacity-75"
-                      key={days}
-                      onPress={() => {
-                        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-                        setReminderDays((current) => toggleReminderDay(current, days));
-                      }}
-                      style={{
-                        width: '48.5%',
-                        backgroundColor: selected ? colors.primarySoft : colors.surfaceInset,
-                        borderColor: selected ? colors.primary : 'transparent',
-                      }}>
-                      {selected ? (
-                        <Check color={colors.primary} size={15} strokeWidth={2.5} style={{ marginRight: 6 }} />
-                      ) : null}
-                      <Text
-                        className="text-xs font-bold"
-                        style={{ color: selected ? colors.primary : colors.text }}>
-                        {label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-
-              {/* Custom reminder day */}
-              <View className="mt-5 border-t pt-4" style={{ borderColor: colors.border }}>
-                <Text className="text-xs font-bold uppercase tracking-wider text-app-muted">
-                  Custom days before
-                </Text>
-                <View className="mt-2 flex-row gap-2">
-                  <TextInput
-                    accessibilityLabel="Custom reminder days before"
-                    className="min-h-12 flex-1 rounded-2xl border px-4 text-sm font-semibold text-app-text"
-                    keyboardType="number-pad"
-                    onChangeText={(value) => {
-                      setCustomReminderDay(value);
-                      clearFieldError('reminderDays');
-                    }}
-                    onFocus={() => focusInput(reminderInputRef.current)}
-                    onSubmitEditing={addCustomReminderDay}
-                    placeholder="e.g. 45"
-                    placeholderTextColor={colors.textSecondary}
-                    ref={reminderInputRef}
-                    returnKeyType="done"
-                    style={{
-                      backgroundColor: colors.surfaceInset,
-                      borderColor: fieldErrors.reminderDays ? colors.danger : colors.border,
-                    }}
-                    value={customReminderDay}
-                  />
-                  <Pressable
-                    accessibilityLabel="Add custom reminder day"
-                    accessibilityRole="button"
-                    className="min-h-12 flex-row items-center rounded-2xl px-5 active:opacity-80"
-                    onPress={() => {
-                      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-                      addCustomReminderDay();
-                    }}
-                    style={{ backgroundColor: colors.primaryFill }}>
-                    <Plus color="#FFFFFF" size={16} strokeWidth={2.5} />
-                    <Text className="ml-1 text-xs font-bold text-white">Add</Text>
-                  </Pressable>
-                </View>
-
-                {reminderDays.filter((day) => !REMINDER_PRESETS.some((preset) => preset.days === day)).length > 0 ? (
-                  <View className="mt-3 flex-row flex-wrap gap-2">
-                    {reminderDays
-                      .filter((day) => !REMINDER_PRESETS.some((preset) => preset.days === day))
-                      .map((day) => (
-                        <Pressable
-                          accessibilityLabel={`Remove reminder ${day} days before`}
-                          accessibilityRole="button"
-                          className="flex-row items-center rounded-full px-3.5 py-1.5 active:opacity-75"
-                          key={day}
-                          onPress={() => {
-                            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-                            setReminderDays((current) => toggleReminderDay(current, day));
-                          }}
-                          style={{ backgroundColor: colors.primarySoft }}>
-                          <Text className="mr-1.5 text-xs font-bold text-app-primary">
-                            {day} days
-                          </Text>
-                          <X color={colors.primary} size={13} strokeWidth={2.5} />
-                        </Pressable>
-                      ))}
                   </View>
-                ) : null}
-
-                {fieldErrors.reminderDays ? (
-                  <Text className="mt-1.5 text-xs font-semibold text-app-danger">
-                    {fieldErrors.reminderDays}
-                  </Text>
-                ) : null}
-              </View>
+                </View>
+                {reminderDays.filter((day) => !REMINDER_PRESETS.some((preset) => preset.days === day)).length ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+                  {reminderDays.filter((day) => !REMINDER_PRESETS.some((preset) => preset.days === day)).map((day) => <Pressable key={day} accessibilityRole="button" accessibilityLabel={`Remove reminder ${day} days before`}
+                    onPress={() => setReminderDays((current) => toggleReminderDay(current, day))}
+                    style={{ minHeight: 48, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 12, backgroundColor: colors.primarySoft }}>
+                    <Text style={{ fontSize: 13, color: colors.primary }}>{day} days</Text><X size={14} color={colors.primary} />
+                  </Pressable>)}
+                </View> : null}
+                <FormError message={fieldErrors.reminderDays} />
+              </View> : null}
+              <DisclosureRow title="Notes" summary={notes.trim() ? 'Notes added / tap to view or edit' : 'Policy numbers, links, or extra details'} expanded={showNotes} onPress={() => toggleOptional('notes')} divider />
+              {showNotes ? <View style={{ paddingHorizontal: 16, paddingBottom: 18 }}>
+                <TextInput ref={notesInputRef} accessibilityLabel="Notes" multiline value={notes} onChangeText={setNotes} onFocus={() => focusInput(notesInputRef.current)}
+                  placeholder="Anything else you would like to keep with this reminder..." placeholderTextColor={colors.textSecondary} textAlignVertical="top"
+                  style={{ ...inputStyle, minHeight: 112, fontSize: 14, lineHeight: 24 }} />
+              </View> : null}
             </View>
-
-            {/* Section 5: Notes */}
-            <Text className="mb-2 mt-7 text-[11px] font-bold uppercase tracking-[1.5px] text-app-muted">
-              Notes (Optional)
-            </Text>
-            <View
-              className="rounded-3xl border p-4"
-              style={{ backgroundColor: colors.surface, borderColor: colors.border }}>
-              <TextInput
-                accessibilityLabel="Notes"
-                className="min-h-24 text-sm leading-6 text-app-text"
-                multiline
-                onChangeText={setNotes}
-                onFocus={() => focusInput(notesInputRef.current)}
-                placeholder="Policy number, links, renewal contact, or instructions..."
-                placeholderTextColor={colors.textSecondary}
-                ref={notesInputRef}
-                textAlignVertical="top"
-                value={notes}
-              />
-            </View>
-
-            {submissionError ? (
-              <Text
-                selectable
-                className="mt-5 rounded-2xl bg-app-danger-soft p-4 text-xs font-semibold text-app-danger">
-                {submissionError}
-              </Text>
-            ) : null}
-          </ScrollView>
-        </View>
-
-        {/* Bottom Save Action Bar */}
-        <View
-          className="border-t px-5 pt-3"
-          style={{
-            backgroundColor: colors.surface,
-            borderColor: colors.border,
-            paddingBottom: Math.max(insets.bottom, 14),
-          }}>
-          <Pressable
-            accessibilityRole="button"
-            className="items-center justify-center rounded-2xl py-4 active:opacity-85 disabled:opacity-50"
-            disabled={isSaving}
-            onPress={saveItem}
-            style={{
-              backgroundColor: colors.primaryFill,
-              shadowColor: colors.primary,
-              shadowOffset: { width: 0, height: 4 },
-              shadowOpacity: 0.25,
-              shadowRadius: 8,
-              elevation: 4,
-            }}>
-            <Text className="text-base font-bold text-white">
-              {isSaving ? 'Saving item...' : isEditing ? 'Save Changes' : 'Create Reminder'}
-            </Text>
-          </Pressable>
-        </View>
-      </KeyboardAvoidingView>
-    </View>
-  );
+            {submissionError ? <View style={{ marginTop: 18 }}><FormError message={submissionError} /></View> : null}
+          </View>
+        </ScrollView>
+      </View>
+      <View style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingHorizontal: 22, paddingTop: 12, paddingBottom: Math.max(insets.bottom, 12), backgroundColor: colors.homeBackground }}>
+        <Pressable accessibilityRole="button" accessibilityState={{ disabled: isSaving || !editReady || Boolean(loadError) || categoryOptions.length === 0, busy: isSaving }}
+          disabled={isSaving || !editReady || Boolean(loadError) || categoryOptions.length === 0} onPress={saveItem}
+          style={({ pressed }) => ({ width: '100%', maxWidth: 640, alignSelf: 'center', minHeight: 52, paddingVertical: 13, paddingHorizontal: 18, borderRadius: 14, flexDirection: 'row', gap: 9, justifyContent: 'center', alignItems: 'center',
+            backgroundColor: colors.primaryFill, opacity: isSaving || !editReady || loadError || categoryOptions.length === 0 ? 0.5 : pressed ? 0.85 : 1 })}>
+          {isSaving ? <ActivityIndicator color={colors.onPrimary} size="small" /> : null}
+          <Text style={{ fontSize: 15, lineHeight: 23, fontWeight: '600', color: colors.onPrimary }}>{isSaving ? 'Saving...' : isEditing ? 'Save changes' : 'Create reminder'}</Text>
+        </Pressable>
+      </View>
+    </KeyboardAvoidingView>
+    <SelectionSheet title={selection === 'category' ? 'Choose category' : selection === 'repeat' ? 'Repeat' : 'Date type'} visible={Boolean(selection)}
+      options={selectionOptions} value={selection === 'category' ? categoryId : selection === 'repeat' ? repeatType : dateType} columns={selection === 'category'}
+      onClose={() => setSelection(undefined)} onSelect={(value) => {
+        if (selection === 'category') { setCategoryId(Number(value)); clearFieldError('category'); }
+        else if (selection === 'repeat') { setRepeatType(value as RepeatType); setIntervalError(undefined); }
+        else setDateType(value as typeof dateType);
+        setSelection(undefined);
+      }} />
+  </View>;
 }
-
+function FormHeading({ children }: { children: React.ReactNode }) {
+  const colors = useTheme();
+  return <Text accessibilityRole="header" style={{ marginBottom: 12, fontSize: 17, lineHeight: 25, fontWeight: '600', letterSpacing: -0.3, color: colors.text }}>{children}</Text>;
+}

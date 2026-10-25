@@ -1,4 +1,5 @@
 import { isRunningInExpoGo } from 'expo';
+import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import Archive from 'lucide-react-native/icons/archive';
 import BellRing from 'lucide-react-native/icons/bell-ring';
@@ -9,22 +10,31 @@ import Check from 'lucide-react-native/icons/check';
 import Monitor from 'lucide-react-native/icons/monitor';
 import Moon from 'lucide-react-native/icons/moon';
 import Sun from 'lucide-react-native/icons/sun';
-import { useState } from 'react';
-import { Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import Download from 'lucide-react-native/icons/download';
+import Upload from 'lucide-react-native/icons/upload';
+import { type ReactNode, useRef, useState } from 'react';
+import { ActivityIndicator, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
 
-import Card from '@/components/ui/Card';
+import ChevronRight from 'lucide-react-native/icons/chevron-right';
 import Button from '@/components/ui/Button';
 import { notificationRuntimeSupported } from '@/utils/notification-runtime';
 import { useAppearance } from '@/contexts/appearance';
 import { useTheme } from '@/hooks/use-theme';
+import type { backupPreview, Backup } from '@/utils/backup';
 
 export default function SettingsScreen() {
   const colors = useTheme();
   const { preference, setPreference } = useAppearance();
   const [isTesting, setIsTesting] = useState(false);
   const [message, setMessage] = useState<string>();
+  const [backupAction, setBackupAction] = useState<'export' | 'choose' | 'restore'>();
+  const backupBusy = useRef(false);
+  const [backupMessage, setBackupMessage] = useState<string>();
+  const [backupError, setBackupError] = useState<string>();
+  const [pendingBackup, setPendingBackup] = useState<{
+    name: string; backup: Backup; preview: ReturnType<typeof backupPreview>;
+  }>();
   const runningInAndroidExpoGo = Platform.OS === 'android' && isRunningInExpoGo();
   const notificationRuntimeAvailable = notificationRuntimeSupported(
     Platform.OS,
@@ -32,7 +42,6 @@ export default function SettingsScreen() {
   );
 
   async function testNotification() {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     if (!notificationRuntimeAvailable) {
       setMessage(
         runningInAndroidExpoGo
@@ -59,150 +68,145 @@ export default function SettingsScreen() {
     }
   }
 
-  return (
-    <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: colors.background }}>
-      <View className="flex-row items-center px-5 py-3">
-        <Pressable
-          accessibilityLabel="Go back"
-          accessibilityRole="button"
-          className="h-10 flex-row items-center pr-3 active:opacity-70"
-          onPress={() => {
-            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-            router.back();
-          }}>
-          <ChevronLeft color={colors.primary} size={22} strokeWidth={2.2} />
-          <Text className="text-sm font-bold text-app-primary">Back</Text>
-        </Pressable>
+  async function handleBackup(action: 'export' | 'choose' | 'restore') {
+    if (backupBusy.current) return;
+    backupBusy.current = true;
+    setBackupAction(action);
+    setBackupMessage(undefined);
+    setBackupError(undefined);
+    try {
+      if (action === 'export') {
+        const { createBackup } = await import('@/services/backup');
+        const { exportBackupFile } = await import('@/services/backup-files');
+        const name = await exportBackupFile(createBackup());
+        if (name) setBackupMessage(`Saved ${name} in your chosen folder. Keep a copy somewhere you can access on your next phone.`);
+      } else if (action === 'choose') {
+        setPendingBackup(undefined);
+        const { chooseBackupFile } = await import('@/services/backup-files');
+        const file = await chooseBackupFile();
+        const { previewBackup } = await import('@/services/backup');
+        if (file) setPendingBackup({ ...file, preview: previewBackup(file.backup) });
+      } else if (pendingBackup) {
+        const { restoreBackup } = await import('@/services/backup');
+        const result = await restoreBackup(pendingBackup.backup);
+        setPendingBackup(undefined);
+        setBackupMessage(`${result.imported} items restored; ${result.duplicates} matching items skipped. ${result.scheduled} alerts scheduled.${result.unscheduled ? ` ${result.unscheduled} alerts could not be scheduled. Check notification permission and reminder dates, then edit and save affected items.` : ''}`);
+      }
+    } catch (error) {
+      setBackupError(error instanceof Error ? error.message : 'Unable to complete backup operation.');
+    } finally {
+      backupBusy.current = false;
+      setBackupAction(undefined);
+    }
+  }
+
+  const panel = { borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, overflow: 'hidden' as const };
+  const secondary = { color: colors.textSecondary, fontSize: 13, lineHeight: 21 };
+  const heading = { color: colors.text, fontSize: 15, lineHeight: 23, fontWeight: '600' as const };
+  const flatButton = { shadowOpacity: 0, elevation: 0 };
+  const filesUnavailable = Platform.OS === 'web';
+  return <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: colors.homeBackground }}>
+    <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8, flexDirection: 'row', alignItems: 'center' }}>
+      <Pressable accessibilityLabel="Go back" accessibilityRole="button" onPress={() => router.back()}
+        style={({ pressed }) => ({ minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.5 : 1 })}>
+        <ChevronLeft color={colors.text} size={24} strokeWidth={1.8} />
+      </Pressable>
+      <Text accessibilityRole="header" style={{ marginLeft: 8, fontSize: 22, lineHeight: 30, fontWeight: '600', letterSpacing: -0.6, color: colors.text }}>Settings</Text>
+    </View>
+    <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 36 }} showsVerticalScrollIndicator={false}>
+      <SectionLabel title="Appearance" />
+      <View style={{ ...panel, padding: 18 }}>
+        <Text style={heading}>Make it feel like you</Text>
+        <Text style={{ ...secondary, marginTop: 4 }}>Follow your device, or choose a theme.</Text>
+        <View accessibilityRole="radiogroup" accessibilityLabel="Appearance" style={{ marginTop: 18, flexDirection: 'row', gap: 8 }}>
+          {([
+            { label: 'System', value: 'system', Icon: Monitor },
+            { label: 'Light', value: 'light', Icon: Sun },
+            { label: 'Dark', value: 'dark', Icon: Moon },
+          ] as const).map(({ label, value, Icon }) => {
+            const selected = preference === value;
+            return <Pressable key={value} accessibilityRole="radio" accessibilityLabel={`${label} appearance`} accessibilityState={{ checked: selected }}
+              onPress={() => setPreference(value)} style={({ pressed }) => ({ flex: 1, minHeight: 86, paddingVertical: 14, paddingHorizontal: 4, borderRadius: 14,
+                borderWidth: 1, borderColor: selected ? colors.primary : colors.border, backgroundColor: selected ? colors.primarySoft : colors.surface,
+                alignItems: 'center', justifyContent: 'center', gap: 9, opacity: pressed ? 0.65 : 1 })}>
+              <Icon color={selected ? colors.primary : colors.textSecondary} size={21} strokeWidth={1.6} />
+              <Text style={{ fontSize: 12, lineHeight: 19, color: selected ? colors.primary : colors.textSecondary, fontWeight: selected ? '600' : '400' }}>{label}</Text>
+              {selected ? <View style={{ position: 'absolute', right: 6, top: 6 }}><Check color={colors.primary} size={12} /></View> : null}
+            </Pressable>;
+          })}
+        </View>
       </View>
 
-      <ScrollView contentContainerClassName="px-5 pb-16 pt-2" showsVerticalScrollIndicator={false}>
-        <Text className="text-[11px] font-bold uppercase tracking-[1.5px] text-app-primary">Duewise</Text>
-        <Text className="mt-0.5 text-3xl font-extrabold tracking-tight text-app-text">Settings</Text>
-
-        {/* Appearance Card */}
-        <Text className="mb-2.5 mt-8 text-xs font-bold uppercase tracking-[1.5px] text-app-muted">
-          Appearance
-        </Text>
-        <Card className="p-5">
-          <Text className="text-base font-bold text-app-text">Theme preference</Text>
-          <Text className="mt-1 text-xs leading-5 text-app-muted">
-            System mirrors device settings. Select Light or Dark to override anytime.
+      <SectionLabel title="Notifications" />
+      <View style={panel}>
+        <SettingsRow icon={<BellRing color={colors.textSecondary} size={20} strokeWidth={1.6} />} title="Check your reminders"
+          description="Alerts use the time you choose for each reminder." />
+        <View style={{ paddingHorizontal: 18, paddingBottom: 18 }}>
+          <Button title={isTesting ? 'Scheduling...' : 'Send 10-second test'} variant="outline" fullWidth loading={isTesting} onPress={() => { void testNotification(); }} style={flatButton} textStyle={{ fontWeight: '500', fontSize: 13 }} />
+          <Text style={{ ...secondary, fontSize: 12, lineHeight: 19, marginTop: 10 }}>
+            {runningInAndroidExpoGo ? 'Use a development build to test alerts on this phone.' : notificationRuntimeAvailable ? 'Send a test, then put Duewise in the background.' : 'Notification testing is available in the Android and iOS app.'}
           </Text>
-          <View accessibilityRole="radiogroup" className="mt-4 flex-row gap-2.5">
-            {([
-              { label: 'System', value: 'system', Icon: Monitor },
-              { label: 'Light', value: 'light', Icon: Sun },
-              { label: 'Dark', value: 'dark', Icon: Moon },
-            ] as const).map(({ label, value, Icon }) => {
-              const selected = preference === value;
-              return (
-                <Pressable
-                  accessibilityLabel={`${label} appearance`}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected }}
-                  className="min-h-[76px] flex-1 items-center justify-center rounded-2xl border active:opacity-80"
-                  key={value}
-                  onPress={() => {
-                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-                    setPreference(value);
-                  }}
-                  style={{
-                    backgroundColor: selected ? colors.primarySoft : colors.surfaceInset,
-                    borderColor: selected ? colors.primary : 'transparent',
-                    borderWidth: 1.5,
-                  }}>
-                  <Icon color={selected ? colors.primary : colors.textSecondary} size={20} />
-                  <Text
-                    className="mt-2 text-xs font-bold"
-                    style={{ color: selected ? colors.primary : colors.textSecondary }}>
-                    {label}
-                  </Text>
-                  {selected ? (
-                    <View className="absolute right-2 top-2">
-                      <Check color={colors.primary} size={14} strokeWidth={2.5} />
-                    </View>
-                  ) : null}
-                </Pressable>
-              );
-            })}
-          </View>
-        </Card>
+          {message ? <Text accessibilityLiveRegion="polite" style={{ ...secondary, marginTop: 10 }}>{message}</Text> : null}
+        </View>
+      </View>
 
-        {/* Reminders Testing Card */}
-        <Text className="mb-2.5 mt-7 text-xs font-bold uppercase tracking-[1.5px] text-app-muted">
-          Notifications
-        </Text>
-        <Card className="p-5">
-          <View className="flex-row items-start">
-            <View
-              className="h-10 w-10 items-center justify-center rounded-2xl"
-              style={{ backgroundColor: colors.primarySoft }}>
-              <BellRing color={colors.primary} size={20} />
-            </View>
-            <View className="ml-3.5 flex-1">
-              <Text className="text-base font-bold text-app-text">Local alerts</Text>
-              <Text className="mt-0.5 text-xs leading-5 text-app-muted">
-                Reminders are generated on this device and delivered at 9:00 AM on scheduled days.
-              </Text>
-            </View>
-          </View>
-          <View className="mt-5">
-            <Button
-              fullWidth
-              loading={isTesting}
-              onPress={testNotification}
-              title={isTesting ? 'Scheduling...' : 'Send 10-second test'}
-            />
-          </View>
-          {message ? (
-            <Text className="mt-3 text-xs leading-5 text-app-muted">{message}</Text>
-          ) : null}
-        </Card>
+      <SectionLabel title="Backup & restore" />
+      <View style={panel}>
+        <SettingsRow icon={<Download color={colors.textSecondary} size={20} strokeWidth={1.6} />} title="Save backup to folder" description="Keep a copy for your next phone."
+          disabled={Boolean(backupAction) || filesUnavailable} loading={backupAction === 'export'} onPress={() => { void handleBackup('export'); }} />
+        <SettingsRow divider icon={<Upload color={colors.textSecondary} size={20} strokeWidth={1.6} />} title="Choose backup to restore" description="Review the contents before adding them."
+          disabled={Boolean(backupAction) || filesUnavailable} loading={backupAction === 'choose'} onPress={() => { void handleBackup('choose'); }} />
+      </View>
+      <Text style={{ ...secondary, fontSize: 12, lineHeight: 20, marginTop: 12, paddingHorizontal: 4 }}>Includes reminders, categories, notes, repeat rules, and history. Temporary snoozes stay on this phone.</Text>
+      <Text style={{ ...secondary, fontSize: 12, lineHeight: 20, marginTop: 6, paddingHorizontal: 4 }}>Backup files are not encrypted. Save them somewhere private.</Text>
+      {filesUnavailable ? <Text style={{ ...secondary, marginTop: 8 }}>File backup and restore are available in the Android and iOS app.</Text> : null}
+      {pendingBackup ? <View style={{ ...panel, padding: 18, marginTop: 16 }}>
+        <Text accessibilityRole="header" style={heading}>Review backup</Text>
+        <Text numberOfLines={2} style={{ ...secondary, marginTop: 8 }}>{pendingBackup.name}</Text>
+        <Text style={{ ...secondary, fontSize: 12, marginTop: 4 }}>Created {new Date(pendingBackup.backup.exportedAt).toLocaleString()}</Text>
+        <Text style={{ color: colors.text, fontSize: 14, lineHeight: 22, marginTop: 14 }}>{pendingBackup.preview.active} active and {pendingBackup.preview.archived} archived items to add. {pendingBackup.preview.duplicates} matching items will be skipped.</Text>
+        {pendingBackup.preview.additions.slice(0, 5).map((item, index) => <Text key={index} numberOfLines={1} style={{ ...secondary, marginTop: 4 }}>{item.name}</Text>)}
+        <Text style={{ ...secondary, marginTop: 12 }}>Your existing reminders will be kept. Future alerts will be scheduled on this phone; past alerts will be skipped.</Text>
+        <View style={{ gap: 8, marginTop: 16 }}>
+          <Button title="Restore items" fullWidth loading={backupAction === 'restore'} disabled={Boolean(backupAction) || pendingBackup.preview.additions.length === 0} onPress={() => { void handleBackup('restore'); }} style={flatButton} />
+          <Button title="Cancel" fullWidth variant="ghost" disabled={Boolean(backupAction)} onPress={() => setPendingBackup(undefined)} />
+        </View>
+      </View> : null}
+      {backupMessage ? <Text accessibilityLiveRegion="polite" style={{ ...secondary, marginTop: 12 }}>{backupMessage}</Text> : null}
+      {backupError ? <Text accessibilityRole="alert" style={{ ...secondary, color: colors.danger, marginTop: 12 }}>{backupError}</Text> : null}
 
-        {/* Privacy & Storage Card */}
-        <Text className="mb-2.5 mt-7 text-xs font-bold uppercase tracking-[1.5px] text-app-muted">
-          Privacy & Storage
-        </Text>
-        <Card className="overflow-hidden p-0">
-          <View className="min-h-16 flex-row items-center px-5 py-3">
-            <Database color={colors.primary} size={18} />
-            <View className="ml-4 flex-1">
-              <Text className="text-sm font-bold text-app-text">Local SQLite Database</Text>
-              <Text className="text-xs text-app-muted">All data is preserved locally on device.</Text>
-            </View>
-          </View>
-
-          <Pressable
-            accessibilityRole="button"
-            className="min-h-16 flex-row items-center border-t border-app-border px-5 py-3 active:opacity-75"
-            onPress={() => {
-              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-              router.push('/archived');
-            }}
-            style={({ pressed }) => [{ backgroundColor: pressed ? colors.primarySoft : 'transparent' }]}>
-            <Archive color={colors.primary} size={18} />
-            <View className="ml-4 flex-1">
-              <Text className="text-sm font-bold text-app-text">Archived Items</Text>
-              <Text className="text-xs text-app-muted">
-                Review, restore, or purge inactive reminders.
-              </Text>
-            </View>
-          </Pressable>
-
-          <View className="min-h-16 flex-row items-center border-t border-app-border px-5 py-3">
-            <ShieldCheck color={colors.success} size={18} />
-            <View className="ml-4 flex-1">
-              <Text className="text-sm font-bold text-app-text">Private & Account-Free</Text>
-              <Text className="text-xs text-app-muted">Duewise never transmits your item data.</Text>
-            </View>
-          </View>
-        </Card>
-
-        <Text className="mt-8 text-center text-xs font-medium text-app-muted">
-          Duewise · Version 1.0.0
-        </Text>
-      </ScrollView>
-    </SafeAreaView>
-  );
+      <SectionLabel title="Your data" />
+      <View style={panel}>
+        <SettingsRow icon={<Archive color={colors.textSecondary} size={20} strokeWidth={1.6} />} title="Archived reminders" description="Review, restore, or permanently delete." onPress={() => router.push('/archived')} />
+        <SettingsRow divider icon={<Database color={colors.textSecondary} size={20} strokeWidth={1.6} />} title="Stored on this phone" description="Your reminders are saved locally on your device." />
+        <SettingsRow divider icon={<ShieldCheck color={colors.textSecondary} size={20} strokeWidth={1.6} />} title="Private by design" description="No account needed. Your reminder data stays with you." />
+      </View>
+      <Text style={{ ...secondary, fontSize: 12, textAlign: 'center', marginTop: 28 }}>Duewise / Version {Constants.expoConfig?.version ?? '1.1.0'}</Text>
+    </ScrollView>
+  </SafeAreaView>;
 }
 
+function SectionLabel({ title }: { title: string }) {
+  const colors = useTheme();
+  return <Text accessibilityRole="header" style={{ marginTop: 24, marginBottom: 12, marginLeft: 4, color: colors.textSecondary, fontSize: 12, lineHeight: 20, fontWeight: '500' }}>{title}</Text>;
+}
+
+function SettingsRow({ title, description, icon, onPress, divider, disabled, loading }: {
+  title: string; description: string; icon: ReactNode; onPress?: () => void;
+  divider?: boolean; disabled?: boolean; loading?: boolean;
+}) {
+  const colors = useTheme();
+  const content = <>
+    <View style={{ paddingTop: 2 }}>{icon}</View>
+    <View style={{ flex: 1, minWidth: 0 }}>
+      <Text style={{ color: colors.text, fontSize: 14, lineHeight: 22, fontWeight: '500' }}>{title}</Text>
+      <Text style={{ color: colors.textSecondary, fontSize: 12, lineHeight: 19, marginTop: 3 }}>{description}</Text>
+    </View>
+    {loading ? <ActivityIndicator color={colors.primary} size="small" /> : onPress ? <ChevronRight color={colors.textSecondary} size={17} /> : null}
+  </>;
+  const style = { minHeight: 84, paddingHorizontal: 18, paddingVertical: 18, flexDirection: 'row' as const, alignItems: 'center' as const, gap: 14,
+    borderTopWidth: divider ? 1 : 0, borderTopColor: colors.border, opacity: disabled ? 0.45 : 1 };
+  return onPress ? <Pressable accessibilityRole="button" accessibilityLabel={`${title}. ${description}`} accessibilityState={{ disabled: Boolean(disabled), busy: Boolean(loading) }}
+    disabled={disabled || loading} onPress={onPress} style={({ pressed }) => ({ ...style, backgroundColor: pressed ? colors.surfaceInset : colors.surface })}>{content}</Pressable>
+    : <View style={style}>{content}</View>;
+}

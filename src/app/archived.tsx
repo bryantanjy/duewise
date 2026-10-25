@@ -8,7 +8,6 @@ import Trash from 'lucide-react-native/icons/trash';
 import { useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
 
 import Card from '@/components/ui/Card';
 import { db } from '@/db';
@@ -27,6 +26,7 @@ const archivedItemsQuery = db
     name: items.name,
     reminderCount: count(reminders.id),
     repeatType: items.repeatType,
+    repeatInterval: items.repeatInterval,
     targetDate: items.targetDate,
   })
   .from(items)
@@ -38,6 +38,7 @@ const archivedItemsQuery = db
     items.name,
     items.importance,
     items.repeatType,
+    items.repeatInterval,
     items.targetDate,
     categories.name,
     categories.color,
@@ -53,7 +54,6 @@ export default function ArchivedItemsScreen() {
   const [actionError, setActionError] = useState<string>();
 
   async function handleRestore(itemId: number) {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     setActiveItemId(itemId);
     setActiveAction('restore');
     setActionError(undefined);
@@ -77,7 +77,6 @@ export default function ArchivedItemsScreen() {
   }
 
   function confirmDelete(itemId: number, itemName: string) {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     Alert.alert(
       'Delete this item permanently?',
       `“${itemName}” and its renewal history will be removed.`,
@@ -114,7 +113,6 @@ export default function ArchivedItemsScreen() {
           accessibilityRole="button"
           className="h-10 flex-row items-center pr-3 active:opacity-70"
           onPress={() => {
-            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
             router.back();
           }}>
           <ChevronLeft color={colors.primary} size={22} strokeWidth={2.2} />
@@ -204,7 +202,6 @@ export default function ArchivedItemsScreen() {
                       className="min-h-11 flex-1 flex-row items-center justify-center rounded-2xl border active:opacity-75 disabled:opacity-40"
                       disabled={isActive}
                       onPress={() => {
-                        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
                         router.push({ pathname: '/item/[id]', params: { id: String(item.id) } });
                       }}
                       style={{ borderColor: colors.border }}>
@@ -232,4 +229,3 @@ export default function ArchivedItemsScreen() {
     </SafeAreaView>
   );
 }
-

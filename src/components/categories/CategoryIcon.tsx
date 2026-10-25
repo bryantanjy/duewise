@@ -35,8 +35,7 @@ export default function CategoryIcon({ color, icon }: CategoryIconProps) {
 
   return (
     <View
-      className="h-9 w-9 items-center justify-center rounded-xl"
-      style={{ backgroundColor: `${visual.color}18` }}>
+      style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: `${visual.color}18` }}>
       <Icon color={visual.color} size={19} strokeWidth={2.2} />
     </View>
   );

@@ -8,6 +8,7 @@ export type CountdownProps = {
   size?: number;
   strokeWidth?: number;
   showLabel?: boolean;
+  inverse?: boolean;
   style?: StyleProp<ViewStyle>;
 };
 
@@ -16,6 +17,7 @@ export default function Countdown({
   size = 72,
   strokeWidth = 6,
   showLabel = true,
+  inverse = false,
   style,
 }: CountdownProps) {
   const colors = useTheme();
@@ -32,11 +34,13 @@ export default function Countdown({
       ? colors.warning
       : colors.primary;
 
-  const bgColor = isOverdue
-    ? colors.dangerSoft
-    : isToday || isUrgent
-      ? colors.warningSoft
-      : colors.primarySoft;
+  const bgColor = inverse
+    ? 'rgba(255, 255, 255, 0.14)'
+    : isOverdue
+      ? colors.dangerSoft
+      : isToday || isUrgent
+        ? colors.warningSoft
+        : colors.primarySoft;
 
   // Visual percentage for remaining (based on 30-day window or 365-day)
   const radius = (size - strokeWidth) / 2;
@@ -92,7 +96,7 @@ export default function Countdown({
         <View style={{ alignItems: 'center', justifyContent: 'center' }}>
           <Text
             style={{
-              color: isOverdue ? colors.danger : colors.text,
+              color: isOverdue ? colors.danger : inverse ? colors.onPrimary : colors.text,
               fontSize: size > 80 ? 26 : size > 60 ? 20 : 16,
               fontWeight: '800',
               fontVariant: ['tabular-nums'],
@@ -110,7 +114,7 @@ export default function Countdown({
             fontSize: 9,
             fontWeight: '700',
             letterSpacing: 1,
-            color: isOverdue ? colors.danger : colors.textSecondary,
+            color: isOverdue ? colors.danger : inverse ? colors.heroMuted : colors.textSecondary,
           }}>
           {statusSubtext}
         </Text>

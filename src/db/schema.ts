@@ -28,9 +28,13 @@ export const items = sqliteTable('items', {
 
   targetDate: text('target_date').notNull(),
 
+  reminderTime: text('reminder_time').notNull().default('09:00'),
+
   repeatType: text('repeat_type')
     .notNull()
     .default('none'),
+
+  repeatInterval: integer('repeat_interval').notNull().default(1),
 
   importance: text('importance')
     .notNull()
@@ -65,6 +69,8 @@ export const reminders = sqliteTable('reminders', {
   daysBefore: integer('days_before').notNull(),
 
   notificationId: text('notification_id'),
+
+  isSnooze: integer('is_snooze', { mode: 'boolean' }).notNull().default(false),
 
   enabled: integer('enabled', {
     mode: 'boolean',

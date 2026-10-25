@@ -1,4 +1,4 @@
-export function uniqueNotificationIds(ids: Array<string | null>) {
+export function uniqueNotificationIds(ids: (string | null)[]) {
   return [...new Set(ids.filter((id): id is string => Boolean(id?.trim())))];
 }
 
@@ -9,7 +9,7 @@ export async function processCleanupRows(
   cancel: (notificationId: string) => Promise<void>,
 ) {
   const completedIds: number[] = [];
-  const failures: Array<{ id: number; message: string }> = [];
+  const failures: { id: number; message: string }[] = [];
 
   for (const row of rows) {
     try {

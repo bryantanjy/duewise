@@ -38,6 +38,8 @@ export default function StatusBadge({ targetDate }: { targetDate: string }) {
         paddingHorizontal: 9,
         paddingVertical: 4,
         borderRadius: 999,
+        borderColor: colors.border,
+        borderWidth: 0.5,
       }}>
       <View
         style={{
@@ -61,4 +63,3 @@ export default function StatusBadge({ targetDate }: { targetDate: string }) {
     </View>
   );
 }
-

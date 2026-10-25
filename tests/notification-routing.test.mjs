@@ -1,3 +1,4 @@
+import './support/register-typescript.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
@@ -99,4 +100,33 @@ test('the response coordinator drains accepted routes immediately after readines
   });
 
   assert.deepEqual(navigated, ['/item/21', '/item/22']);
+});
+
+
+test('notification actions wait for database readiness and duplicate delivery runs once', async () => {
+  const actions = [];
+  const navigated = [];
+  const coordinator = createNotificationResponseCoordinator((route) => navigated.push(route), async (input) => { actions.push(input.actionIdentifier); });
+  const input = { actionIdentifier: 'duewise_complete', data: { type: 'item-reminder', itemId: 4, targetDate: '2027-01-01' }, defaultActionIdentifier: 'default', requestIdentifier: 'cold-start' };
+  coordinator.handleResponse(input);
+  coordinator.handleResponse(input);
+  assert.deepEqual(actions, []);
+  coordinator.setReady(true);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(actions, ['duewise_complete']);
+  assert.deepEqual(navigated, []);
+});
+
+test('failed notification actions report errors and do not block the next action', async () => {
+  const actions = [];
+  const errors = [];
+  const coordinator = createNotificationResponseCoordinator(() => {}, async (input) => {
+    actions.push(input.requestIdentifier);
+    if (input.requestIdentifier === 'one') throw new Error('Failure');
+  }, (error) => errors.push(error.message));
+  for (const requestIdentifier of ['one', 'two']) coordinator.handleResponse({ actionIdentifier: 'duewise_snooze_hour', requestIdentifier, data: { type: 'item-reminder', itemId: 1, targetDate: '2027-01-01' }, defaultActionIdentifier: 'default' });
+  coordinator.setReady(true);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(actions, ['one', 'two']);
+  assert.deepEqual(errors, ['Failure']);
 });

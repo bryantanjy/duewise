@@ -1,8 +1,10 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
+import { REMINDER_CATEGORY, SNOOZE_ACTION, COMPLETE_ACTION } from '../utils/notification-actions';
+import { reminderDateFor } from '../utils/reminder-time';
+
 const REMINDERS_CHANNEL_ID = 'duewise-reminders';
-const REMINDER_HOUR = 9;
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -33,6 +35,7 @@ export async function requestNotificationPermission() {
   }
 
   await createAndroidReminderChannel();
+  await registerReminderActions();
 
   const currentPermission = await Notifications.getPermissionsAsync();
 
@@ -71,22 +74,17 @@ export type ItemReminderInput = {
   itemId: number;
   itemName: string;
   targetDate: string;
+  reminderTime?: string;
 };
-
-function reminderDateFor(targetDate: string, daysBefore: number) {
-  const [year, month, day] = targetDate.split('-').map(Number);
-  const reminderDate = new Date(year, month - 1, day, REMINDER_HOUR, 0, 0, 0);
-  reminderDate.setDate(reminderDate.getDate() - daysBefore);
-  return reminderDate;
-}
 
 export async function scheduleItemReminder({
   daysBefore,
   itemId,
   itemName,
   targetDate,
+  reminderTime = '09:00',
 }: ItemReminderInput) {
-  const reminderDate = reminderDateFor(targetDate, daysBefore);
+  const reminderDate = reminderDateFor(targetDate, daysBefore, reminderTime);
 
   if (reminderDate.getTime() <= Date.now()) {
     return null;
@@ -105,11 +103,14 @@ export async function scheduleItemReminder({
 
   return Notifications.scheduleNotificationAsync({
     content: {
+      categoryIdentifier: REMINDER_CATEGORY,
       title: `${itemName} ${timing}`,
       body: `Due date: ${targetDate}`,
       data: {
         itemId,
         type: 'item-reminder',
+        targetDate,
+        scheduledFor: reminderDate.toISOString(),
         url: `/item/${itemId}`,
       },
       sound: 'default',
@@ -131,3 +132,27 @@ export const deviceNotificationAdapter: NotificationAdapter = {
   cancel: Notifications.cancelScheduledNotificationAsync,
   schedule: scheduleItemReminder,
 };
+
+
+export async function registerReminderActions() {
+  if (Platform.OS === 'web') return;
+  await Notifications.setNotificationCategoryAsync(REMINDER_CATEGORY, [
+    { identifier: SNOOZE_ACTION, buttonTitle: 'Snooze 1 hour', options: { opensAppToForeground: true } },
+    { identifier: COMPLETE_ACTION, buttonTitle: 'Mark done', options: { opensAppToForeground: true } },
+  ]);
+}
+
+export async function scheduleSnoozedReminder(input: { itemId: number; itemName: string; targetDate: string; requestId: string }) {
+  if (!await requestNotificationPermission()) throw new Error('Enable notifications in Settings before snoozing.');
+  const scheduledFor = new Date(Date.now() + 3600000);
+  return Notifications.scheduleNotificationAsync({
+    identifier: `duewise_snooze_${input.requestId}`,
+    content: {
+      title: input.itemName,
+      body: 'Your snoozed reminder', sound: 'default', categoryIdentifier: REMINDER_CATEGORY,
+      data: { type: 'item-reminder', itemId: input.itemId, targetDate: input.targetDate, scheduledFor: scheduledFor.toISOString() },
+    },
+    trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: scheduledFor,
+      channelId: Platform.OS === 'android' ? REMINDERS_CHANNEL_ID : undefined },
+  });
+}

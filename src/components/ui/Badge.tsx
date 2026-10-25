@@ -55,6 +55,8 @@ export default function Badge({
           paddingHorizontal: isSm ? 8 : 11,
           paddingVertical: isSm ? 3 : 5,
           borderRadius: 999,
+          borderColor: colors.border,
+          borderWidth: 0.5,
         },
         style,
       ]}>

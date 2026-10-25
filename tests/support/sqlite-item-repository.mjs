@@ -12,14 +12,14 @@ export function createSqliteItemRepository() {
     CREATE TABLE items (
       id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
       category_id INTEGER REFERENCES categories(id), date_type TEXT NOT NULL,
-      target_date TEXT NOT NULL, repeat_type TEXT NOT NULL DEFAULT 'none',
+      target_date TEXT NOT NULL, reminder_time TEXT NOT NULL DEFAULT '09:00', repeat_interval INTEGER NOT NULL DEFAULT 1, repeat_type TEXT NOT NULL DEFAULT 'none',
       importance TEXT NOT NULL DEFAULT 'normal', notes TEXT,
       archived INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
     );
     CREATE TABLE reminders (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
-      days_before INTEGER NOT NULL, notification_id TEXT, enabled INTEGER NOT NULL DEFAULT 1
+      days_before INTEGER NOT NULL, notification_id TEXT, is_snooze INTEGER NOT NULL DEFAULT 0, enabled INTEGER NOT NULL DEFAULT 1
     );
     CREATE TABLE item_history (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

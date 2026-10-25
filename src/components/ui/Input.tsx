@@ -45,11 +45,11 @@ const Input = forwardRef<TextInput, InputProps>(
           <Text
             style={[
               {
-                fontSize: 13,
-                fontWeight: '600',
+                fontSize: 12,
+                fontWeight: '700',
                 color: colors.text,
                 marginBottom: 8,
-                letterSpacing: 0.2,
+                letterSpacing: 0.4,
               },
               labelStyle,
             ]}>
@@ -61,20 +61,20 @@ const Input = forwardRef<TextInput, InputProps>(
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            backgroundColor: colors.surface,
-            borderWidth: 1.5,
+            backgroundColor: isFocused ? colors.surface : colors.surfaceInset,
+            borderWidth: 1,
             borderColor: error
               ? colors.danger
               : isFocused
                 ? colors.primary
                 : colors.border,
-            borderRadius: 18,
+            borderRadius: 16,
             paddingHorizontal: 16,
             minHeight: 52,
             shadowColor: isFocused ? colors.primary : 'transparent',
             shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: isFocused ? 0.12 : 0,
-            shadowRadius: 6,
+            shadowOpacity: isFocused ? 0.1 : 0,
+            shadowRadius: 10,
           }}>
           {leftIcon && <View style={{ marginRight: 12 }}>{leftIcon}</View>}
 

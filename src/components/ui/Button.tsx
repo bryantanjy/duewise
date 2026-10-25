@@ -3,13 +3,11 @@ import {
   ActivityIndicator,
   Pressable,
   StyleProp,
-  StyleSheet,
   Text,
   TextStyle,
   View,
   ViewStyle,
 } from 'react-native';
-import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/hooks/use-theme';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
@@ -26,7 +24,6 @@ export type ButtonProps = {
   iconPosition?: 'left' | 'right';
   style?: StyleProp<ViewStyle>;
   textStyle?: StyleProp<TextStyle>;
-  haptic?: boolean;
   fullWidth?: boolean;
   accessibilityLabel?: string;
 };
@@ -42,7 +39,6 @@ export default function Button({
   iconPosition = 'left',
   style,
   textStyle,
-  haptic = true,
   fullWidth = false,
   accessibilityLabel,
 }: ButtonProps) {
@@ -50,9 +46,6 @@ export default function Button({
 
   const handlePress = () => {
     if (disabled || loading) return;
-    if (haptic) {
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    }
     onPress();
   };
 
@@ -61,14 +54,14 @@ export default function Button({
       alignItems: 'center',
       justifyContent: 'center',
       flexDirection: 'row',
-      borderRadius: size === 'sm' ? 14 : size === 'lg' ? 22 : 18,
+      borderRadius: size === 'sm' ? 12 : size === 'lg' ? 18 : 15,
       alignSelf: fullWidth ? 'stretch' : 'flex-start',
     };
 
     switch (size) {
       case 'sm':
         base.paddingHorizontal = 14;
-        base.minHeight = 38;
+        base.minHeight = 44;
         break;
       case 'lg':
         base.paddingHorizontal = 24;
@@ -84,11 +77,13 @@ export default function Button({
     switch (variant) {
       case 'secondary':
         base.backgroundColor = colors.primarySoft;
+        base.borderColor = colors.borderHighlight;
+        base.borderWidth = 1;
         break;
       case 'outline':
-        base.backgroundColor = 'transparent';
+        base.backgroundColor = colors.surface;
         base.borderColor = colors.border;
-        base.borderWidth = 1.5;
+        base.borderWidth = 1;
         break;
       case 'ghost':
         base.backgroundColor = 'transparent';
@@ -99,11 +94,11 @@ export default function Button({
       case 'primary':
       default:
         base.backgroundColor = colors.primaryFill;
-        base.shadowColor = colors.primary;
-        base.shadowOffset = { width: 0, height: 4 };
-        base.shadowOpacity = 0.25;
-        base.shadowRadius = 8;
-        base.elevation = 4;
+        base.shadowColor = colors.shadow;
+        base.shadowOffset = { width: 0, height: 6 };
+        base.shadowOpacity = 0.18;
+        base.shadowRadius = 12;
+        base.elevation = 3;
         break;
     }
 
@@ -123,10 +118,10 @@ export default function Button({
       case 'ghost':
         return colors.primary;
       case 'danger':
-        return '#FFFFFF';
+        return colors.onPrimary;
       case 'primary':
       default:
-        return '#FFFFFF';
+        return colors.onPrimary;
     }
   };
 
@@ -142,8 +137,8 @@ export default function Button({
       style={({ pressed }) => [
         getContainerStyle(),
         {
-          opacity: pressed ? 0.85 : disabled ? 0.45 : 1,
-          transform: [{ scale: pressed ? 0.98 : 1 }],
+          opacity: pressed ? 0.9 : disabled ? 0.45 : 1,
+          transform: [{ scale: pressed ? 0.985 : 1 }],
         },
         style,
       ]}>
@@ -158,7 +153,7 @@ export default function Button({
           {
             color: getTextColor(),
             fontSize: textFontSize,
-            fontWeight: '600',
+            fontWeight: '700',
             letterSpacing: 0.2,
           },
           textStyle,

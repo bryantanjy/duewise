@@ -37,24 +37,18 @@ function Write-BrandImage([string] $name, [int] $size, [bool] $background, [bool
     }
 
     $path = [System.Drawing.Drawing2D.GraphicsPath]::new()
-    $points = [System.Drawing.PointF[]]@(
-      [System.Drawing.PointF]::new(31, 25), [System.Drawing.PointF]::new(49, 25),
-      [System.Drawing.PointF]::new(65, 25), [System.Drawing.PointF]::new(76, 36),
-      [System.Drawing.PointF]::new(76, 50), [System.Drawing.PointF]::new(76, 64),
-      [System.Drawing.PointF]::new(65, 75), [System.Drawing.PointF]::new(49, 75)
-    )
-    $path.AddLine(31, 25, 31, 75)
-    $path.AddLine(31, 75, 49, 75)
-    $path.AddBezier($points[7], $points[6], $points[5], $points[4])
-    $path.AddBezier($points[4], $points[3], $points[2], $points[1])
-    $path.AddLine(49, 25, 31, 25)
-    $stroke = [System.Drawing.Pen]::new([System.Drawing.Color]::White, 8)
+    $path.AddLine(34, 30, 34, 70)
+    $path.AddLine(34, 70, 48, 70)
+    $path.AddBezier(48, 70, 62, 70, 71, 62, 71, 50)
+    $path.AddBezier(71, 50, 71, 38, 62, 30, 48, 30)
+    $path.AddLine(48, 30, 34, 30)
+    $stroke = [System.Drawing.Pen]::new([System.Drawing.Color]::White, 7)
     $stroke.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
     $stroke.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
     $stroke.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
     $graphics.DrawPath($stroke, $path)
     $dotColor = if ($monochrome) { [System.Drawing.Color]::White } else { New-Color '#F0C78C' }
-    $graphics.FillEllipse([System.Drawing.SolidBrush]::new($dotColor), 69, 20, 14, 14)
+    $graphics.FillEllipse([System.Drawing.SolidBrush]::new($dotColor), 68, 26, 11, 11)
 
     $bitmap.Save((Join-Path $assetRoot $name), [System.Drawing.Imaging.ImageFormat]::Png)
     $stroke.Dispose()

@@ -1,5 +1,5 @@
+import { repeatLabel } from '@/utils/recurrence';
 import { Pressable, Text, View } from 'react-native';
-import * as Haptics from 'expo-haptics';
 
 import { formatDay, formatMonth, daysUntil } from '@/utils/dates';
 import { useTheme } from '@/hooks/use-theme';
@@ -13,6 +13,7 @@ export type ItemRowData = {
   importance: string;
   name: string;
   repeatType: string;
+  repeatInterval?: number;
   targetDate: string;
 };
 
@@ -29,7 +30,6 @@ export default function ItemRow({ item, onPress, showDivider = false }: ItemRowP
   const isUrgent = days >= 0 && days <= 7;
 
   const handlePress = () => {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     onPress();
   };
 
@@ -37,7 +37,7 @@ export default function ItemRow({ item, onPress, showDivider = false }: ItemRowP
     <Pressable
       accessibilityLabel={`${item.name}, due ${item.targetDate}`}
       accessibilityRole="button"
-      className={`min-h-[82px] flex-row items-center px-4 py-3.5 active:opacity-80 ${
+      className={`min-h-[84px] flex-row items-center px-4 py-3.5 active:opacity-90 ${
         showDivider ? 'border-t border-app-border' : ''
       }`}
       onPress={handlePress}
@@ -55,6 +55,12 @@ export default function ItemRow({ item, onPress, showDivider = false }: ItemRowP
             : isUrgent
               ? colors.warningSoft
               : colors.primarySoft,
+          borderColor: isOverdue
+            ? colors.danger
+            : isUrgent
+              ? colors.warning
+              : colors.borderHighlight,
+          borderWidth: 0.5,
         }}>
         <Text
           className="text-[10px] font-extrabold tracking-wider"
@@ -82,7 +88,7 @@ export default function ItemRow({ item, onPress, showDivider = false }: ItemRowP
           />
           <Text className="text-xs font-semibold text-app-muted" numberOfLines={1}>
             {item.categoryName ?? 'Uncategorized'}
-            {item.repeatType === 'yearly' ? ' · Yearly' : ''}
+            {item.repeatType !== 'none' ? ` - ${repeatLabel(item.repeatType, item.repeatInterval)}` : ''}
           </Text>
         </View>
         <Text
@@ -106,4 +112,3 @@ export default function ItemRow({ item, onPress, showDivider = false }: ItemRowP
     </Pressable>
   );
 }
-

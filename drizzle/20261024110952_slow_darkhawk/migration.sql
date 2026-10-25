@@ -1,0 +1,1 @@
+ALTER TABLE `items` ADD `reminder_time` text DEFAULT '09:00' NOT NULL;

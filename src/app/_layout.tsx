@@ -3,11 +3,13 @@ import '../global.css';
 import { useMigrations } from 'drizzle-orm/expo-sqlite/migrator';
 import { isRunningInExpoGo } from 'expo';
 import type { NotificationResponse } from 'expo-notifications';
-import { router, Stack } from 'expo-router';
+import { DarkTheme, DefaultTheme, router, Stack, ThemeProvider } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
-import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Platform, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Platform, StyleSheet, Text, View } from 'react-native';
+
+import { COMPLETE_ACTION, reminderActionData } from '@/utils/notification-actions';
 
 import migrations from '../../drizzle/migrations';
 import { db } from '@/db';
@@ -16,6 +18,7 @@ import { runWithNotificationRuntime } from '@/utils/notification-runtime';
 import { createNotificationResponseCoordinator } from '@/utils/notification-routing';
 import { AppearanceProvider, useAppearance } from '@/contexts/appearance';
 import { useTheme } from '@/hooks/use-theme';
+import { useReducedMotion } from '@/hooks/use-reduced-motion';
 
 // Drizzle Kit 1.0 RC generates the runtime bundle without the legacy journal
 // field, while the migrator hook's declaration still requires it.
@@ -28,12 +31,19 @@ export default function RootLayout() {
 function RootLayoutContent() {
   const colors = useTheme();
   const { resolvedTheme } = useAppearance();
+  const reducedMotion = useReducedMotion();
+  const navigationTheme = useMemo(() => {
+    const base = resolvedTheme === 'dark' ? DarkTheme : DefaultTheme;
+    return { ...base, colors: { ...base.colors, background: colors.homeBackground,
+      card: colors.surface, text: colors.text, border: colors.border,
+      primary: colors.primary, notification: colors.danger } };
+  }, [colors, resolvedTheme]);
 
   useEffect(() => {
-    void SystemUI.setBackgroundColorAsync(colors.background).catch(() => {
+    void SystemUI.setBackgroundColorAsync(colors.homeBackground).catch(() => {
       // The app views still carry their own theme-aware backgrounds.
     });
-  }, [colors.background]);
+  }, [colors.homeBackground]);
 
   const { success, error } = useMigrations(db, bundledMigrations);
   const [seedComplete, setSeedComplete] = useState(false);
@@ -50,6 +60,17 @@ function RootLayoutContent() {
           clearLastNotificationResponse();
         },
       });
+    }, async (input) => {
+      const data = reminderActionData(input.data);
+      if (!data) return;
+      const service = await import('@/services/items');
+      if (input.actionIdentifier === COMPLETE_ACTION) await service.completeItem(data.itemId, data.targetDate);
+      else await service.snoozeItem(data.itemId, data.targetDate, input.requestIdentifier);
+      const Notifications = await import('expo-notifications');
+      await Notifications.dismissNotificationAsync(input.requestIdentifier);
+      Notifications.clearLastNotificationResponse();
+    }, (error) => {
+      Alert.alert('Reminder action failed', error instanceof Error ? error.message : 'Please try again from the item.');
     }),
   );
 
@@ -62,7 +83,7 @@ function RootLayoutContent() {
       runningInExpoGo: runningInAndroidExpoGo,
       load: async () => {
         const [, Notifications] = await Promise.all([
-          import('@/services/notifications'),
+          import('@/services/notifications').then(async (service) => { await service.registerReminderActions(); return service; }),
           import('expo-notifications'),
         ]);
         return Notifications;
@@ -158,7 +179,14 @@ function RootLayoutContent() {
     );
   }
 
-  return <><StatusBar style={resolvedTheme === 'dark' ? 'light' : 'dark'} /><Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }} /></>;
+  return <ThemeProvider value={navigationTheme}>
+    <StatusBar style={resolvedTheme === 'dark' ? 'light' : 'dark'} />
+    <Stack screenOptions={{
+      headerShown: false,
+      animation: reducedMotion ? 'none' : Platform.OS === 'android' ? 'fade' : 'default',
+      contentStyle: { backgroundColor: colors.homeBackground },
+    }} />
+  </ThemeProvider>;
 }
 
 const styles = StyleSheet.create({

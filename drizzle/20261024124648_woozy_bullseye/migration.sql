@@ -1,0 +1,1 @@
+ALTER TABLE `items` ADD `repeat_interval` integer DEFAULT 1 NOT NULL;

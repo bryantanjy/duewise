@@ -1,6 +1,6 @@
 import type { CreateItemInput, CreateItemResult } from './items';
 import type { NotificationAdapter } from './notifications';
-import { nextYearDate } from '../utils/dates';
+import { nextFutureOccurrence } from '../utils/recurrence';
 import { uniqueNotificationIds } from '../utils/notification-cleanup-model';
 import {
   ReminderStagingError,
@@ -9,14 +9,16 @@ import {
   type StagedReminderResult,
 } from './reminder-staging';
 
-export type StoredReminder = { daysBefore: number; notificationId: string | null };
+export type StoredReminder = { daysBefore: number; notificationId: string | null; isSnooze?: boolean };
 export type StoredItemBundle = {
   item: {
     archived: boolean;
     id: number;
     name: string;
     repeatType: string;
+    repeatInterval?: number;
     targetDate: string;
+    reminderTime?: string;
   };
   reminders: StoredReminder[];
 };
@@ -25,6 +27,7 @@ export type ItemOperationRepository = {
   createItemRecord(input: CreateItemInput): Promise<number>;
   getItemBundle(itemId: number): Promise<StoredItemBundle | undefined>;
   commitCreatedReminders(itemId: number, rows: StoredReminder[]): Promise<void>;
+  commitRescheduledReminders(itemId: number, rows: StoredReminder[], oldIds: string[]): Promise<void>;
   commitEdit(args: {
     input: CreateItemInput;
     itemId: number;
@@ -54,12 +57,13 @@ export type ItemOperations = {
   createItem(input: CreateItemInput): Promise<CreateItemResult>;
   updateItem(itemId: number, input: CreateItemInput): Promise<CreateItemResult>;
   renewItem(itemId: number): Promise<CreateItemResult>;
+  rescheduleItem(itemId: number): Promise<CreateItemResult>;
   archiveItem(itemId: number): Promise<void>;
   restoreItem(itemId: number): Promise<CreateItemResult>;
   deleteItem(itemId: number): Promise<void>;
 };
 
-export function oldNotificationIds(rows: Array<{ notificationId: string | null }>) {
+export function oldNotificationIds(rows: { notificationId: string | null }[]) {
   return uniqueNotificationIds(rows.map(({ notificationId }) => notificationId));
 }
 
@@ -128,11 +132,25 @@ export function createItemOperations({
   }
 
   return {
+    async rescheduleItem(itemId) {
+      const bundle = await requireItem(itemId);
+      if (bundle.item.archived) return { itemId, scheduledReminderCount: 0, skippedReminderCount: 0 };
+      const oldIds = oldNotificationIds(bundle.reminders);
+      const staged = await stageAndCommit({
+        itemId, itemName: bundle.item.name, targetDate: bundle.item.targetDate,
+        reminderTime: bundle.item.reminderTime,
+        reminderDays: bundle.reminders.filter((row) => !row.isSnooze).map((row) => row.daysBefore),
+      }, (result) => repository.commitRescheduledReminders(itemId, result.rows, oldIds));
+      if (oldIds.length > 0) await cleanup(oldIds);
+      return itemOperationResult(itemId, staged);
+    },
+
     async createItem(input) {
       const itemId = await repository.createItemRecord(input);
       const staged = await stageAndCommit({
         itemId, itemName: input.name.trim(), reminderDays: input.reminderDays,
         targetDate: input.targetDate,
+        reminderTime: input.reminderTime,
       }, (result) => repository.commitCreatedReminders(itemId, result.rows), true);
       return itemOperationResult(itemId, staged);
     },
@@ -143,6 +161,7 @@ export function createItemOperations({
       const staged = await stageAndCommit({
         itemId, itemName: input.name.trim(), reminderDays: input.reminderDays,
         targetDate: input.targetDate,
+        reminderTime: input.reminderTime,
       }, (result) => repository.commitEdit({
         input, itemId, oldNotificationIds: oldIds, reminders: result.rows,
       }));
@@ -153,15 +172,16 @@ export function createItemOperations({
 
     async renewItem(itemId) {
       const bundle = await requireItem(itemId);
-      if (bundle.item.archived || bundle.item.repeatType !== 'yearly') {
-        throw new Error('Only active yearly items can be renewed.');
+      if (bundle.item.archived || bundle.item.repeatType === 'none') {
+        throw new Error('Only active repeating items can be renewed.');
       }
-      const newTargetDate = nextYearDate(bundle.item.targetDate);
+      const newTargetDate = nextFutureOccurrence(bundle.item.targetDate, bundle.item.repeatType, bundle.item.repeatInterval);
       const oldIds = oldNotificationIds(bundle.reminders);
       const staged = await stageAndCommit({
         itemId, itemName: bundle.item.name,
-        reminderDays: bundle.reminders.map(({ daysBefore }) => daysBefore),
+        reminderDays: bundle.reminders.filter((row) => !row.isSnooze).map(({ daysBefore }) => daysBefore),
         targetDate: newTargetDate,
+        reminderTime: bundle.item.reminderTime,
       }, (result) => repository.commitRenew({
         itemId, newTargetDate, oldNotificationIds: oldIds,
         previousTargetDate: bundle.item.targetDate, reminders: result.rows,
@@ -185,8 +205,9 @@ export function createItemOperations({
       const staged = await stageAndCommit({
         itemId,
         itemName: bundle.item.name,
-        reminderDays: bundle.reminders.map(({ daysBefore }) => daysBefore),
+        reminderDays: bundle.reminders.filter((row) => !row.isSnooze).map(({ daysBefore }) => daysBefore),
         targetDate: bundle.item.targetDate,
+        reminderTime: bundle.item.reminderTime,
       }, (result) => repository.commitRestore({ itemId, reminders: result.rows }));
       return itemOperationResult(itemId, staged);
     },

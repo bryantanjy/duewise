@@ -20,6 +20,7 @@ registerHooks({
       '@/db': 'export const db = globalThis.__itemTestDb;',
       './notifications': `
         export const scheduleItemReminder = (...args) => globalThis.__itemTestSchedule(...args);
+        export const scheduleSnoozedReminder = async (input) => 'duewise_snooze_' + input.requestId;
         export const deviceNotificationAdapter = {
           schedule: scheduleItemReminder,
           cancel: (...args) => globalThis.__itemTestCancel(...args),
@@ -92,4 +93,77 @@ test('production create reports compensation storage failure while preserving st
   });
   assert.equal(await sqlite.repository.getItemBundle(1), undefined);
   assert.equal(logged.length, 1);
+});
+
+
+test('selected time persists through create, edit, renew and restore scheduling', async () => {
+  const scheduled = [];
+  globalThis.__itemTestSchedule = async (value) => {
+    scheduled.push(value);
+    return `time-${scheduled.length}`;
+  };
+  const { itemId } = await service.createItem({ ...input, reminderTime: '18:45' });
+  assert.equal(sqlite.database.prepare('SELECT reminder_time FROM items WHERE id = ?').get(itemId).reminder_time, '18:45');
+  await service.updateItem(itemId, { ...input, reminderTime: '07:15' });
+  await service.renewItem(itemId);
+  await service.archiveItem(itemId);
+  await service.restoreItem(itemId);
+  assert.deepEqual(scheduled.map((row) => row.reminderTime), ['18:45', '18:45', '07:15', '07:15', '07:15', '07:15', '07:15', '07:15']);
+  assert.equal(sqlite.database.prepare('SELECT reminder_time FROM items WHERE id = ?').get(itemId).reminder_time, '07:15');
+});
+
+
+test('complete advances repeating items once and stale notification actions cannot advance again', async () => {
+  const { itemId } = await service.createItem({ ...input, repeatType: 'custom', repeatInterval: 14, targetDate: '2028-01-01', reminderTime: '18:45' });
+  await service.completeItem(itemId, '2028-01-01');
+  assert.equal(sqlite.database.prepare('SELECT target_date FROM items WHERE id = ?').get(itemId).target_date, '2028-01-15');
+  await service.completeItem(itemId, '2028-01-01');
+  assert.equal(sqlite.database.prepare('SELECT target_date FROM items WHERE id = ?').get(itemId).target_date, '2028-01-15');
+});
+
+test('snoozes are tracked, deduplicated and cancelled on completion without becoming repeat rules', async () => {
+  const cancelled = [];
+  globalThis.__itemTestCancel = async (id) => cancelled.push(id);
+  const { itemId } = await service.createItem({ ...input, repeatType: 'daily', reminderDays: [7], targetDate: '2028-01-01' });
+  await service.snoozeItem(itemId, '2028-01-01', 'request-one');
+  await service.snoozeItem(itemId, '2028-01-01', 'request-one');
+  assert.equal(sqlite.database.prepare('SELECT count(*) AS total FROM reminders WHERE is_snooze = 1').get().total, 1);
+  await service.completeItem(itemId, '2028-01-01');
+  assert.ok(cancelled.includes('duewise_snooze_request-one'));
+  assert.deepEqual(sqlite.database.prepare('SELECT days_before FROM reminders WHERE item_id = ?').all(itemId).map((row) => row.days_before), [7]);
+  await service.snoozeItem(itemId, '2028-01-01', 'stale');
+  assert.equal(sqlite.database.prepare('SELECT count(*) AS total FROM reminders WHERE is_snooze = 1').get().total, 0);
+});
+
+test('completing one-time items archives them and cancels outstanding alerts', async () => {
+  const cancelled = [];
+  globalThis.__itemTestCancel = async (id) => cancelled.push(id);
+  const { itemId } = await service.createItem({ ...input, repeatType: 'none' });
+  await service.completeItem(itemId, input.targetDate);
+  assert.equal(sqlite.database.prepare('SELECT archived FROM items WHERE id = ?').get(itemId).archived, 1);
+  assert.equal(cancelled.length, 2);
+});
+
+
+test('simultaneous completion actions advance an occurrence only once', async () => {
+  const { itemId } = await service.createItem({ ...input, repeatType: 'daily', targetDate: '2028-01-01' });
+  await Promise.all([service.completeItem(itemId, '2028-01-01'), service.completeItem(itemId, '2028-01-01')]);
+  assert.equal(sqlite.database.prepare('SELECT target_date FROM items WHERE id = ?').get(itemId).target_date, '2028-01-02');
+});
+
+
+test('rescheduling restored items preserves metadata and compensates failed native alerts', async () => {
+  const { itemId } = await service.createItem({ ...input, reminderTime: '18:45' });
+  const before = sqlite.database.prepare('SELECT * FROM items WHERE id = ?').get(itemId);
+  await service.rescheduleItem(itemId);
+  assert.deepEqual(sqlite.database.prepare('SELECT * FROM items WHERE id = ?').get(itemId), before);
+  const cancelled = [];
+  globalThis.__itemTestCancel = async (id) => cancelled.push(id);
+  globalThis.__itemTestSchedule = async ({ daysBefore }) => {
+    if (daysBefore === 0) throw new Error('OS scheduling failed');
+    return 'staged-backup-alert';
+  };
+  await assert.rejects(service.rescheduleItem(itemId), /OS scheduling failed/);
+  assert.ok(cancelled.includes('staged-backup-alert'));
+  assert.deepEqual(sqlite.database.prepare('SELECT * FROM items WHERE id = ?').get(itemId), before);
 });

@@ -1,130 +1,56 @@
 import ArrowRight from 'lucide-react-native/icons/arrow-right';
-import Calendar from 'lucide-react-native/icons/calendar';
-import { Pressable, Text, View } from 'react-native';
-import * as Haptics from 'expo-haptics';
-import Countdown from '@/components/items/Countdown';
-import { statusText } from '@/components/items/StatusBadge';
+import { Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { useTheme } from '@/hooks/use-theme';
-import { formatDay, formatMonth } from '@/utils/dates';
+import { daysUntil } from '@/utils/dates';
+import { formatDateForDisplay } from '@/utils/item-form';
+import { repeatLabel } from '@/utils/recurrence';
 
 export type ExpiryCardData = {
-  id: number;
-  name: string;
-  targetDate: string;
-  categoryName?: string | null;
-  categoryColor?: string | null;
-  repeatType?: string | null;
-  importance?: string | null;
+  id: number; name: string; targetDate: string; categoryName?: string | null;
+  categoryColor?: string | null; repeatType?: string | null; repeatInterval?: number; importance?: string | null;
 };
-
-export type ExpiryCardProps = {
-  item: ExpiryCardData;
-  onPress: () => void;
-};
+export type ExpiryCardProps = { item: ExpiryCardData; onPress: () => void };
 
 export default function ExpiryCard({ item, onPress }: ExpiryCardProps) {
   const colors = useTheme();
-
-  const handlePress = () => {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    onPress();
-  };
-
+  const { width, fontScale } = useWindowDimensions();
+  const stacked = fontScale > 1.3;
+  const days = daysUntil(item.targetDate);
+  const countdown = days === 0 ? 'Today' : String(Math.abs(days));
+  const countdownLabel = days < 0 ? Math.abs(days) === 1 ? 'day overdue' : 'days overdue' : days === 0 ? 'due today' : days === 1 ? 'day to go' : 'days to go';
+  const recurrence = item.repeatType && item.repeatType !== 'none'
+    ? `Repeats ${repeatLabel(item.repeatType, item.repeatInterval).toLowerCase()} after completion`
+    : 'One-time reminder';
   return (
-    <Pressable
-      accessibilityLabel={`Next on your horizon: ${item.name}`}
-      accessibilityRole="button"
-      className="mt-6 overflow-hidden rounded-[28px] border border-white/10 active:opacity-95"
-      onPress={handlePress}
-      style={{
-        backgroundColor: colors.hero,
-        shadowColor: colors.primary,
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.15,
-        shadowRadius: 16,
-        elevation: 6,
-      }}>
-      {/* Decorative ambient background rings */}
-      <View
-        className="pointer-events-none absolute -right-12 -top-12 h-52 w-52 rounded-full border border-white/10"
-        style={{ opacity: 0.7 }}
-      />
-      <View
-        className="pointer-events-none absolute -right-2 -top-2 h-36 w-36 rounded-full border border-white/10"
-        style={{ opacity: 0.5 }}
-      />
-      <View
-        className="pointer-events-none absolute -bottom-16 -left-10 h-44 w-44 rounded-full bg-white/5"
-        style={{ opacity: 0.3 }}
-      />
-
-      <View className="p-6">
-        {/* Top Tag Row */}
-        <View className="flex-row items-center justify-between">
-          <View className="flex-row items-center rounded-full bg-white/10 px-3 py-1">
-            <View
-              className="mr-2 h-2 w-2 rounded-full"
-              style={{ backgroundColor: item.categoryColor ?? colors.heroAccent }}
-            />
-            <Text
-              className="text-[11px] font-bold uppercase tracking-[1.5px]"
-              style={{ color: colors.heroAccent }}>
-              {item.categoryName ?? 'Horizon'}
-            </Text>
-          </View>
-
-          <View className="flex-row items-center">
-            <Calendar color={colors.heroMuted} size={14} />
-            <Text className="ml-1.5 text-xs font-semibold" style={{ color: colors.heroMuted }}>
-              {formatMonth(item.targetDate)} {formatDay(item.targetDate)}
-            </Text>
-          </View>
+    <Pressable accessibilityRole="button"
+      accessibilityLabel={`${item.name}, due ${formatDateForDisplay(item.targetDate)}, ${days === 0 ? 'today' : `${Math.abs(days)} ${countdownLabel}`}`}
+      accessibilityHint="View reminder details"
+      onPress={onPress} style={({ pressed }) => ({
+        backgroundColor: colors.hero, borderColor: colors.heroBorder, borderWidth: 1,
+        borderRadius: 20, padding: 22, opacity: pressed ? 0.92 : 1,
+      })}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: item.categoryColor ?? colors.heroAccent }} />
+          <Text style={{ fontSize: 12, fontWeight: '500', color: colors.heroMuted }}>{item.categoryName ?? 'Reminder'}</Text>
         </View>
-
-        {/* Content & Countdown Row */}
-        <View className="mt-5 flex-row items-center justify-between">
-          <View className="flex-1 pr-4">
-            <Text
-              className="text-2xl font-bold leading-8 text-white"
-              numberOfLines={2}
-              style={{ letterSpacing: -0.5 }}>
-              {item.name}
-            </Text>
-            <Text className="mt-1.5 text-sm" style={{ color: colors.heroMuted }}>
-              {item.repeatType === 'yearly' ? 'Renews annually' : 'One-time reminder'}
-            </Text>
-          </View>
-
-          <View className="rounded-2xl border border-white/15 bg-white/10 p-2.5">
-            <Countdown
-              size={64}
-              strokeWidth={5}
-              targetDate={item.targetDate}
-            />
-          </View>
+        {item.importance === 'high' ? <Text style={{ fontSize: 12, color: colors.heroAccent }}>High priority</Text> : null}
+      </View>
+      <View style={{ flexDirection: stacked ? 'column' : 'row', alignItems: stacked ? 'flex-start' : 'center', gap: 20, marginTop: 22 }}>
+        <View style={{ flex: stacked ? undefined : 1, minWidth: 0 }}>
+          <Text numberOfLines={3} style={{ fontSize: width < 360 ? 22 : 26, lineHeight: width < 360 ? 29 : 33, fontWeight: '600', letterSpacing: -0.7, color: colors.onPrimary }}>{item.name}</Text>
+          <Text style={{ marginTop: 8, fontSize: 13, lineHeight: 20, color: colors.heroMuted }}>{formatDateForDisplay(item.targetDate)}</Text>
         </View>
-
-        {/* Footer Row */}
-        <View className="mt-6 flex-row items-center justify-between border-t border-white/10 pt-4">
-          <View className="flex-row items-center">
-            <View
-              className="mr-2 h-2 w-2 rounded-full bg-emerald-400"
-              style={{
-                shadowColor: '#34D399',
-                shadowOpacity: 0.8,
-                shadowRadius: 4,
-              }}
-            />
-            <Text className="text-sm font-semibold text-white">
-              {statusText(item.targetDate)}
-            </Text>
-          </View>
-
-          <View className="flex-row items-center">
-            <Text className="mr-1 text-xs font-semibold text-white/80">View details</Text>
-            <ArrowRight color="#FFFFFF" size={16} />
-          </View>
+        <View style={{ alignItems: stacked ? 'flex-start' : 'flex-end' }}>
+          <Text style={{ color: colors.onPrimary, fontSize: days === 0 ? 28 : width < 360 ? 34 : 40, lineHeight: days === 0 ? 36 : width < 360 ? 40 : 46,
+            fontWeight: '500', letterSpacing: -1.5, fontVariant: ['tabular-nums'] }}>{countdown}</Text>
+          {days !== 0 ? <Text style={{ fontSize: 12, color: colors.heroMuted, marginTop: 2 }}>{countdownLabel}</Text> : null}
         </View>
+      </View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 22,
+        borderTopWidth: 1, borderTopColor: colors.heroBorder, paddingTop: 14 }}>
+        <Text style={{ flex: 1, fontSize: 12, lineHeight: 18, color: colors.heroMuted }}>{recurrence}</Text>
+        <ArrowRight color={colors.heroAccent} size={18} strokeWidth={1.7} />
       </View>
     </Pressable>
   );

@@ -1,27 +1,21 @@
+import { occurrenceOnDate } from '@/utils/recurrence';
 import { eq } from 'drizzle-orm';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
-import { router } from 'expo-router';
-import ArrowLeft from 'lucide-react-native/icons/arrow-left';
-import ArrowRight from 'lucide-react-native/icons/arrow-right';
-import CalendarIcon from 'lucide-react-native/icons/calendar';
+import { router, useFocusEffect } from 'expo-router';
+import ChevronLeft from 'lucide-react-native/icons/chevron-left';
 import ChevronRight from 'lucide-react-native/icons/chevron-right';
+import CalendarIcon from 'lucide-react-native/icons/calendar';
 import Plus from 'lucide-react-native/icons/plus';
-import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { ActivityIndicator, AppState, FlatList, Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
-
 import type { ItemRowData } from '@/components/items/ItemRow';
-import StatusBadge from '@/components/items/StatusBadge';
-import Button from '@/components/ui/Button';
-import Card from '@/components/ui/Card';
+import HomeReminderRow from '@/components/items/HomeReminderRow';
 import { db } from '@/db';
 import { categories, items } from '@/db/schema';
-import { buildCalendarEventModel } from '@/utils/calendar-event-model';
-import { daysUntil, formatDay, formatMonth, parseLocalDate, toDateInput } from '@/utils/dates';
+import { parseLocalDate, toDateInput } from '@/utils/dates';
 import { useTheme } from '@/hooks/use-theme';
-
-const WEEKDAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
 const calendarItemsQuery = db
   .select({
@@ -31,6 +25,7 @@ const calendarItemsQuery = db
     importance: items.importance,
     name: items.name,
     repeatType: items.repeatType,
+    repeatInterval: items.repeatInterval,
     targetDate: items.targetDate,
   })
   .from(items)
@@ -54,20 +49,9 @@ function calendarDays(month: Date) {
   });
 }
 
-function yearlyOccurrence(targetDate: string, year: number) {
-  const original = parseLocalDate(targetDate);
-  if (year < original.getFullYear()) return undefined;
-
-  const month = original.getMonth();
-  const lastDay = new Date(year, month + 1, 0).getDate();
-  return toDateInput(new Date(year, month, Math.min(original.getDate(), lastDay)));
-}
-
 function occurrenceForDate(item: ItemRowData, date: Date) {
   const dateKey = toDateInput(date);
-  if (item.repeatType !== 'yearly') return item.targetDate === dateKey ? dateKey : undefined;
-  const occurrence = yearlyOccurrence(item.targetDate, date.getFullYear());
-  return occurrence === dateKey ? occurrence : undefined;
+  return occurrenceOnDate(item.targetDate, item.repeatType, item.repeatInterval ?? 1, dateKey) ? dateKey : undefined;
 }
 
 function itemOccurrencesForDate(data: ItemRowData[], date: Date) {
@@ -79,354 +63,91 @@ function itemOccurrencesForDate(data: ItemRowData[], date: Date) {
 
 export default function CalendarScreen() {
   const colors = useTheme();
-  const today = useMemo(() => new Date(), []);
-  const todayKey = toDateInput(today);
-  const [visibleMonth, setVisibleMonth] = useState(() => startOfMonth(today));
+  const [todayKey, setTodayKey] = useState(() => toDateInput(new Date()));
+  const [visibleMonth, setVisibleMonth] = useState(() => startOfMonth(new Date()));
   const [selectedDate, setSelectedDate] = useState(todayKey);
-  const { data, error } = useLiveQuery(calendarItemsQuery);
-  const days = useMemo(() => calendarDays(visibleMonth), [visibleMonth]);
+  const { data, error, updatedAt } = useLiveQuery(calendarItemsQuery);
+  useFocusEffect(useCallback(() => {
+    const refresh = () => setTodayKey(toDateInput(new Date()));
+    refresh();
+    const timer = setInterval(refresh, 60000);
+    const subscription = AppState.addEventListener('change', refresh);
+    return () => { clearInterval(timer); subscription.remove(); };
+  }, []));
+  const days = useMemo(() => calendarDays(visibleMonth).map(date => ({
+    date, key: toDateInput(date), count: itemOccurrencesForDate(data, date).length,
+  })), [data, visibleMonth]);
   const selectedDateValue = useMemo(() => parseLocalDate(selectedDate), [selectedDate]);
-  const selectedItems = useMemo(
-    () => itemOccurrencesForDate(data, selectedDateValue),
-    [data, selectedDateValue],
-  );
-
-  const monthLabel = new Intl.DateTimeFormat(undefined, {
-    month: 'long',
-    year: 'numeric',
-  }).format(visibleMonth);
-
-  const selectedDateLabel = new Intl.DateTimeFormat(undefined, {
-    weekday: 'long',
-    month: 'short',
-    day: 'numeric',
-  }).format(selectedDateValue);
-
-  function changeMonth(offset: number) {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    const nextMonth = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + offset, 1);
-    setVisibleMonth(nextMonth);
-    setSelectedDate(
-      nextMonth.getFullYear() === today.getFullYear() && nextMonth.getMonth() === today.getMonth()
-        ? todayKey
-        : toDateInput(nextMonth),
-    );
-  }
-
+  const selectedItems = useMemo(() => itemOccurrencesForDate(data, selectedDateValue), [data, selectedDateValue]);
+  const monthLabel = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(visibleMonth);
+  const dateLabel = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'short', day: 'numeric' }).format(selectedDateValue);
+  const loading = !updatedAt && !error && data.length === 0;
   function selectDate(date: Date) {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setSelectedDate(toDateInput(date));
-    if (
-      date.getFullYear() !== visibleMonth.getFullYear() ||
-      date.getMonth() !== visibleMonth.getMonth()
-    ) {
-      setVisibleMonth(startOfMonth(date));
-    }
+    setVisibleMonth(startOfMonth(date));
   }
-
-  const handleAddPress = () => {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    router.push('/item/new');
-  };
-
-  return (
-    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.background }}>
-      <ScrollView contentContainerClassName="px-5 pb-28 pt-4" showsVerticalScrollIndicator={false}>
-        {/* Header */}
-        <View className="flex-row items-end justify-between">
-          <View>
-            <Text className="text-[11px] font-bold uppercase tracking-[1.5px] text-app-primary">
-              Your horizon
-            </Text>
-            <Text className="mt-0.5 text-3xl font-extrabold tracking-tight text-app-text">
-              Calendar
-            </Text>
+  function changeMonth(offset: number) {
+    const next = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + offset, 1);
+    const today = parseLocalDate(todayKey);
+    selectDate(next.getFullYear() === today.getFullYear() && next.getMonth() === today.getMonth() ? today : next);
+  }
+  const addReminder = () => router.push({ pathname: '/item/new', params: { date: selectedDate } });
+  return <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.homeBackground }}>
+    <View style={{ paddingHorizontal: 24, paddingTop: 18, paddingBottom: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+      <Text accessibilityRole="header" style={{ color: colors.text, fontSize: 26, lineHeight: 34, fontWeight: '600', letterSpacing: -0.8 }}>Calendar</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel="Add reminder for selected date" onPress={addReminder}
+        style={({ pressed }) => ({ width: 48, height: 48, borderRadius: 24, backgroundColor: colors.primaryFill, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.75 : 1 })}>
+        <Plus color="#FFFFFF" size={23} strokeWidth={2} />
+      </Pressable>
+    </View>
+    <FlatList data={error ? [] : selectedItems} keyExtractor={item => String(item.id)} initialNumToRender={10}
+      contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 32 }} showsVerticalScrollIndicator={false}
+      ListHeaderComponent={<>
+        <View style={{ borderRadius: 22, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 8, paddingTop: 12, paddingBottom: 14 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4, marginBottom: 14 }}>
+            <Text accessibilityRole="header" accessibilityLiveRegion="polite" style={{ flex: 1, paddingLeft: 8, fontSize: 18, lineHeight: 26, fontWeight: '600', letterSpacing: -0.3, color: colors.text }}>{monthLabel}</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="Previous month" onPress={() => changeMonth(-1)} style={({ pressed }) => ({ width: 44, height: 48, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.45 : 1 })}><ChevronLeft color={colors.textSecondary} size={20} /></Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="Next month" onPress={() => changeMonth(1)} style={({ pressed }) => ({ width: 44, height: 48, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.45 : 1 })}><ChevronRight color={colors.textSecondary} size={20} /></Pressable>
           </View>
-          <Pressable
-            accessibilityLabel="Jump to today"
-            accessibilityRole="button"
-            className="rounded-full px-4 py-2 active:opacity-75"
-            onPress={() => {
-              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-              setVisibleMonth(startOfMonth(today));
-              setSelectedDate(todayKey);
-            }}
-            style={{
-              backgroundColor: colors.primarySoft,
-            }}>
-            <Text className="text-xs font-bold text-app-primary">Today</Text>
-          </Pressable>
-        </View>
-
-        {error ? (
-          <Text selectable className="mt-6 rounded-2xl bg-app-danger-soft p-4 text-app-danger">
-            {error.message}
-          </Text>
-        ) : null}
-
-        {/* Calendar Card Grid */}
-        <Card className="mt-6 p-4">
-          {/* Month Navigator */}
-          <View className="mb-3 flex-row items-center justify-between px-1">
-            <Pressable
-              accessibilityLabel="Previous month"
-              accessibilityRole="button"
-              className="h-10 w-10 items-center justify-center rounded-2xl active:opacity-70"
-              onPress={() => changeMonth(-1)}
-              style={{ backgroundColor: colors.surfaceInset }}>
-              <ArrowLeft color={colors.text} size={18} strokeWidth={2.2} />
-            </Pressable>
-
-            <Text className="text-base font-extrabold tracking-tight text-app-text">
-              {monthLabel}
-            </Text>
-
-            <Pressable
-              accessibilityLabel="Next month"
-              accessibilityRole="button"
-              className="h-10 w-10 items-center justify-center rounded-2xl active:opacity-70"
-              onPress={() => changeMonth(1)}
-              style={{ backgroundColor: colors.surfaceInset }}>
-              <ArrowRight color={colors.text} size={18} strokeWidth={2.2} />
-            </Pressable>
+          <View style={{ flexDirection: 'row', marginBottom: 6 }}>
+            {WEEKDAYS.map((day, index) => <Text key={index} style={{ width: '14.2857%', textAlign: 'center', color: colors.textSecondary, fontSize: 11, lineHeight: 20, fontWeight: '500' }}>{day}</Text>)}
           </View>
-
-          {/* Weekday headers */}
-          <View className="flex-row border-b pb-2 pt-1" style={{ borderColor: colors.border }}>
-            {WEEKDAYS.map((weekday, index) => (
-              <View
-                className="items-center"
-                key={`${weekday}-${index}`}
-                style={{ width: '14.2857%' }}>
-                <Text
-                  className="text-[10px] font-bold tracking-wider"
-                  style={{ color: colors.textSecondary }}>
-                  {weekday}
-                </Text>
-              </View>
-            ))}
-          </View>
-
-          {/* 42 Day Grid */}
-          <View className="mt-2 flex-row flex-wrap">
-            {days.map((date) => {
-              const dateKey = toDateInput(date);
-              const isSelected = dateKey === selectedDate;
-              const isToday = dateKey === todayKey;
-              const isCurrentMonth = date.getMonth() === visibleMonth.getMonth();
-              const dayItems = itemOccurrencesForDate(data, date);
-
-              return (
-                <Pressable
-                  accessibilityLabel={`${new Intl.DateTimeFormat(undefined, {
-                    day: 'numeric',
-                    month: 'long',
-                    year: 'numeric',
-                  }).format(date)}, ${dayItems.length} due`}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: isSelected }}
-                  className="h-13 items-center justify-center active:opacity-80"
-                  key={dateKey}
-                  onPress={() => selectDate(date)}
-                  style={{ width: '14.2857%' }}>
-                  <View
-                    className="h-9 w-9 items-center justify-center rounded-2xl"
-                    style={{
-                      backgroundColor: isSelected
-                        ? colors.primaryFill
-                        : isToday
-                          ? colors.primarySoft
-                          : 'transparent',
-                      borderWidth: isToday && !isSelected ? 1.5 : 0,
-                      borderColor: colors.primary,
-                      shadowColor: isSelected ? colors.primary : 'transparent',
-                      shadowOffset: { width: 0, height: 2 },
-                      shadowOpacity: isSelected ? 0.35 : 0,
-                      shadowRadius: 4,
-                    }}>
-                    <Text
-                      className="text-xs font-bold"
-                      style={{
-                        color: isSelected
-                          ? '#FFFFFF'
-                          : isToday
-                            ? colors.primary
-                            : isCurrentMonth
-                              ? colors.text
-                              : colors.textSecondary,
-                        opacity: !isCurrentMonth && !isSelected ? 0.35 : 1,
-                        fontVariant: ['tabular-nums'],
-                      }}>
-                      {date.getDate()}
-                    </Text>
-                  </View>
-
-                  {/* Multi-dot event indicator */}
-                  <View className="mt-1 h-1.5 flex-row items-center justify-center gap-1">
-                    {dayItems.slice(0, 3).map((item) => (
-                      <View
-                        className="h-1.5 w-1.5 rounded-full"
-                        key={item.id}
-                        style={{
-                          backgroundColor: isSelected
-                            ? colors.primary
-                            : item.categoryColor ?? colors.primary,
-                        }}
-                      />
-                    ))}
-                  </View>
-                </Pressable>
-              );
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+            {days.map(({ date, key, count }) => {
+              const selected = key === selectedDate;
+              const today = key === todayKey;
+              const currentMonth = date.getMonth() === visibleMonth.getMonth();
+              return <Pressable key={key} accessibilityRole="button" accessibilityState={{ selected }}
+                accessibilityLabel={`${new Intl.DateTimeFormat(undefined, { dateStyle: 'full' }).format(date)}${today ? ', today' : ''}, ${count} ${count === 1 ? 'reminder' : 'reminders'}`}
+                onPress={() => selectDate(date)} style={({ pressed }) => ({ width: '14.2857%', minHeight: 52, paddingVertical: 4, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}>
+                <View style={{ width: 34, minHeight: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: selected ? colors.primaryFill : today ? colors.primarySoft : 'transparent', borderWidth: today && !selected ? 1 : 0, borderColor: colors.primary }}>
+                  <Text style={{ fontSize: 14, lineHeight: 24, fontWeight: selected || today ? '600' : '400', color: selected ? '#FFFFFF' : today ? colors.primary : colors.text, opacity: !currentMonth && !selected ? 0.4 : 1, fontVariant: ['tabular-nums'] }}>{date.getDate()}</Text>
+                </View>
+                <View style={{ height: 6, marginTop: 3, alignItems: 'center', justifyContent: 'center' }}>
+                  {count > 0 ? <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: colors.primary, opacity: currentMonth ? 1 : 0.4 }} /> : null}
+                </View>
+              </Pressable>;
             })}
           </View>
-        </Card>
-
-        {/* Selected Date Agenda Header */}
-        <View className="mb-3.5 mt-8 flex-row items-end justify-between px-1">
-          <View>
-            <Text className="text-lg font-extrabold tracking-tight text-app-text">
-              {selectedDate === todayKey ? `Today · ${selectedDateLabel}` : selectedDateLabel}
-            </Text>
-            <Text className="mt-0.5 text-xs font-semibold text-app-muted">
-              {selectedItems.length === 0
-                ? 'No items scheduled'
-                : `${selectedItems.length} ${selectedItems.length === 1 ? 'item' : 'items'} due`}
-            </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, marginTop: 6, gap: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 }}><View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: colors.primary }} /><Text style={{ color: colors.textSecondary, fontSize: 11, lineHeight: 18 }}>Reminders scheduled</Text></View>
+            <Pressable accessibilityRole="button" accessibilityLabel="Jump to today" onPress={() => selectDate(parseLocalDate(todayKey))} style={({ pressed }) => ({ minHeight: 44, paddingHorizontal: 8, justifyContent: 'center', opacity: pressed ? 0.5 : 1 })}><Text style={{ fontSize: 13, fontWeight: '500', color: colors.primary }}>Today</Text></Pressable>
           </View>
         </View>
-
-        {/* Selected Date Items List */}
-        {selectedItems.length > 0 ? (
-          <Card className="overflow-hidden p-0">
-            {selectedItems.map((item, index) => {
-              const model = buildCalendarEventModel(item, item.targetDate);
-              const remainingDays = daysUntil(model.date);
-              const isOverdue = remainingDays < 0;
-              const isUrgent = remainingDays >= 0 && remainingDays <= 7;
-
-              return (
-                <Pressable
-                  accessibilityLabel={`Open ${model.title}`}
-                  accessibilityRole="button"
-                  className={`flex-row items-center p-4 active:opacity-80 ${
-                    index > 0 ? 'border-t border-app-border' : ''
-                  }`}
-                  key={model.id}
-                  onPress={() => {
-                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-                    router.push({ pathname: '/item/[id]', params: { id: String(model.id) } });
-                  }}
-                  style={({ pressed }) => [
-                    {
-                      backgroundColor: pressed ? colors.primarySoft : 'transparent',
-                    },
-                  ]}>
-                  {/* Left date block */}
-                  <View
-                    className="w-13 items-center rounded-2xl py-2"
-                    style={{
-                      backgroundColor: isOverdue
-                        ? colors.dangerSoft
-                        : isUrgent
-                          ? colors.warningSoft
-                          : colors.primarySoft,
-                    }}>
-                    <Text
-                      className="text-[10px] font-extrabold tracking-wider"
-                      style={{
-                        color: isOverdue ? colors.danger : isUrgent ? colors.warning : colors.primary,
-                      }}>
-                      {formatMonth(model.date)}
-                    </Text>
-                    <Text
-                      className="mt-0.5 text-2xl font-bold tracking-tight"
-                      style={{
-                        color: isOverdue ? colors.danger : colors.text,
-                        fontVariant: ['tabular-nums'],
-                      }}>
-                      {formatDay(model.date)}
-                    </Text>
-                  </View>
-
-                  {/* Body */}
-                  <View className="ml-3.5 flex-1 pr-2">
-                    <View className="flex-row items-center">
-                      <View
-                        className="mr-2 h-2 w-2 rounded-full"
-                        style={{ backgroundColor: model.categoryColor }}
-                      />
-                      <Text className="text-xs font-semibold text-app-muted" numberOfLines={1}>
-                        {model.categoryLabel}
-                      </Text>
-                    </View>
-                    <Text
-                      className="mt-1 text-[15px] font-bold tracking-tight text-app-text"
-                      numberOfLines={1}>
-                      {model.title}
-                    </Text>
-                  </View>
-
-                  {/* Right Status & Arrow */}
-                  <View className="items-end pl-1">
-                    <StatusBadge targetDate={model.date} />
-                    {model.highImportance ? (
-                      <View
-                        className="mt-1.5 rounded px-1.5 py-0.5"
-                        style={{ backgroundColor: colors.dangerSoft }}>
-                        <Text className="text-[9px] font-extrabold tracking-widest text-app-danger">
-                          HIGH
-                        </Text>
-                      </View>
-                    ) : null}
-                  </View>
-
-                  <ChevronRight color={colors.textSecondary} size={16} style={{ marginLeft: 6 }} />
-                </Pressable>
-              );
-            })}
-          </Card>
-        ) : (
-          <Card className="items-center p-6 text-center">
-            <View
-              className="h-12 w-12 items-center justify-center rounded-2xl"
-              style={{ backgroundColor: colors.primarySoft }}>
-              <CalendarIcon color={colors.primary} size={22} />
-            </View>
-            <Text className="mt-3 text-base font-bold text-app-text">A clear day</Text>
-            <Text className="mt-1 text-center text-xs leading-5 text-app-muted">
-              Nothing scheduled on this date. Select another day or add a reminder.
-            </Text>
-            <View className="mt-4">
-              <Button
-                icon={<Plus color="#FFFFFF" size={16} />}
-                onPress={handleAddPress}
-                size="sm"
-                title="Add reminder"
-              />
-            </View>
-          </Card>
-        )}
-      </ScrollView>
-
-      {/* Floating Action Button */}
-      {data.length > 0 ? (
-        <Pressable
-          accessibilityLabel="Add new item"
-          accessibilityRole="button"
-          className="absolute bottom-6 right-6 h-14 w-14 items-center justify-center rounded-full active:opacity-85"
-          onPress={handleAddPress}
-          style={{
-            backgroundColor: colors.primaryFill,
-            shadowColor: colors.primary,
-            shadowOffset: { width: 0, height: 6 },
-            shadowOpacity: 0.35,
-            shadowRadius: 10,
-            elevation: 8,
-          }}>
-          <Plus color="#FFFFFF" size={24} strokeWidth={2.5} />
-        </Pressable>
-      ) : null}
-    </SafeAreaView>
-  );
+        <View style={{ marginTop: 28, marginBottom: 14, paddingHorizontal: 4 }}>
+          <Text accessibilityRole="header" style={{ fontSize: 19, lineHeight: 27, fontWeight: '600', letterSpacing: -0.4, color: colors.text }}>{selectedDate === todayKey ? 'Today' : dateLabel}</Text>
+          <Text accessibilityLiveRegion="polite" style={{ marginTop: 4, color: colors.textSecondary, fontSize: 12, lineHeight: 19 }}>{selectedDate === todayKey ? `${dateLabel} / ` : ''}{loading ? 'Loading reminders...' : error ? 'Reminders unavailable' : `${selectedItems.length} ${selectedItems.length === 1 ? 'reminder' : 'reminders'}`}</Text>
+        </View>
+      </>}
+      renderItem={({ item, index }) => <View style={{ overflow: 'hidden', borderLeftWidth: 1, borderRightWidth: 1, borderTopWidth: index === 0 ? 1 : 0, borderBottomWidth: index === selectedItems.length - 1 ? 1 : 0, borderColor: colors.border, borderTopLeftRadius: index === 0 ? 20 : 0, borderTopRightRadius: index === 0 ? 20 : 0, borderBottomLeftRadius: index === selectedItems.length - 1 ? 20 : 0, borderBottomRightRadius: index === selectedItems.length - 1 ? 20 : 0 }}>
+        <HomeReminderRow item={item} showDivider={index > 0} onPress={() => router.push(`/item/${item.id}`)} />
+      </View>}
+      ListEmptyComponent={loading ? <ActivityIndicator color={colors.primary} style={{ padding: 32 }} /> : <View style={{ padding: 26, borderRadius: 20, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center' }}>
+        <CalendarIcon color={colors.textSecondary} size={24} strokeWidth={1.5} />
+        <Text style={{ marginTop: 14, color: colors.text, fontSize: 17, lineHeight: 25, fontWeight: '500' }}>{error ? 'Unable to load reminders' : 'A little breathing room.'}</Text>
+        <Text style={{ marginTop: 6, color: colors.textSecondary, fontSize: 13, lineHeight: 21, textAlign: 'center' }}>{error ? 'Your reminders could not be loaded. Reopen this screen to try again.' : 'Nothing scheduled for this date. Keep it clear, or plan something ahead.'}</Text>
+        {!error ? <Pressable accessibilityRole="button" onPress={addReminder} style={({ pressed }) => ({ minHeight: 48, justifyContent: 'center', marginTop: 12, paddingHorizontal: 16, opacity: pressed ? 0.5 : 1 })}><Text style={{ fontSize: 14, fontWeight: '600', color: colors.primary }}>Add reminder</Text></Pressable> : null}
+      </View>}
+    />
+  </SafeAreaView>;
 }
-
