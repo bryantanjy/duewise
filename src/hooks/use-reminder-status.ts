@@ -19,15 +19,10 @@ export function useReminderStatus(version: string, checkVersion = 0) {
           if (active) setStatus({ state: 'unsupported', notifications: [] });
           return;
         }
-        const Notifications = await import('expo-notifications');
-        const [permission, requests] = await Promise.all([
-          Notifications.getPermissionsAsync(), Notifications.getAllScheduledNotificationsAsync(),
-        ]);
+        const { getReminderDeviceStatus } = await import('@/services/notifications');
+        const nextStatus = await getReminderDeviceStatus(trackedIds);
         if (!active || current !== generation) return;
-        setStatus({ state: permission.granted ? 'ready' : 'blocked', notifications: requests.filter((request) => trackedIds.has(request.identifier)).map((request) => ({
-          id: request.identifier,
-          scheduledFor: typeof request.content.data?.scheduledFor === 'string' ? request.content.data.scheduledFor : undefined,
-        })) });
+        setStatus(nextStatus);
       } catch {
         if (active && current === generation) setStatus({ state: 'error', notifications: [] });
       }

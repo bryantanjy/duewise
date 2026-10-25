@@ -47,3 +47,12 @@ test('an actual queued notification suppresses missing-alert recovery', () => {
   assert.equal(isMissingFutureAlert(queued), false);
   assert.equal(alertScheduleStatus(queued), 'Scheduled');
 });
+
+
+test('disabled reminder channels never claim scheduled alerts or a next delivery time', () => {
+  const status = { state: 'blocked', blockedReason: 'channel', notifications: [{ id: 'queued', scheduledFor: '2027-02-01T00:00:00Z' }] };
+  assert.equal(reminderStatusLabel('queued', status), 'Reminder channel disabled');
+  assert.equal(nextScheduledReminder(status, ['queued'], now), undefined);
+  assert.equal(isMissingFutureAlert({ ...alert, deviceStatus: status }), false);
+  assert.equal(reminderStatusLabel(null, { ...status, blockedReason: 'channel-missing' }), 'Reminder channel unavailable');
+});

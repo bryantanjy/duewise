@@ -2,9 +2,10 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
 import { REMINDER_CATEGORY, SNOOZE_ACTION, COMPLETE_ACTION } from '../utils/notification-actions';
+import type { ReminderDeviceStatus } from '../utils/reminder-status';
 import { reminderDateFor } from '../utils/reminder-time';
 
-const REMINDERS_CHANNEL_ID = 'duewise-reminders';
+export const REMINDERS_CHANNEL_ID = 'duewise-reminders';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -39,12 +40,11 @@ export async function requestNotificationPermission() {
 
   const currentPermission = await Notifications.getPermissionsAsync();
 
-  if (currentPermission.granted) {
-    return true;
-  }
-
-  const requestedPermission = await Notifications.requestPermissionsAsync();
-  return requestedPermission.granted;
+  const permission = currentPermission.granted ? currentPermission : await Notifications.requestPermissionsAsync();
+  if (!permission.granted) return false;
+  if (Platform.OS !== 'android') return true;
+  const channel = await Notifications.getNotificationChannelAsync(REMINDERS_CHANNEL_ID);
+  return channel !== null && channel.importance !== Notifications.AndroidImportance.NONE;
 }
 
 export async function scheduleTestNotification(
@@ -155,4 +155,24 @@ export async function scheduleSnoozedReminder(input: { itemId: number; itemName:
     trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: scheduledFor,
       channelId: Platform.OS === 'android' ? REMINDERS_CHANNEL_ID : undefined },
   });
+}
+
+// App permission and queue membership alone do not prove the reminder channel can deliver.
+export async function getReminderDeviceStatus(trackedIds: Set<string>): Promise<ReminderDeviceStatus> {
+  const [permission, requests, channel] = await Promise.all([
+    Notifications.getPermissionsAsync(), Notifications.getAllScheduledNotificationsAsync(),
+    Platform.OS === 'android' ? Notifications.getNotificationChannelAsync(REMINDERS_CHANNEL_ID) : undefined,
+  ]);
+  const blockedReason = !permission.granted ? 'permission'
+    : Platform.OS === 'android' && !channel ? 'channel-missing'
+    : channel?.importance === Notifications.AndroidImportance.NONE ? 'channel' : undefined;
+  return {
+    state: blockedReason ? 'blocked' : 'ready', blockedReason,
+    // Android uses the OS inexact-alarm fallback without exact-alarm access.
+    timing: Platform.OS === 'android' ? 'may-be-delayed' : undefined,
+    notifications: requests.filter(request => trackedIds.has(request.identifier)).map(request => ({
+      id: request.identifier,
+      scheduledFor: typeof request.content.data?.scheduledFor === 'string' ? request.content.data.scheduledFor : undefined,
+    })),
+  };
 }

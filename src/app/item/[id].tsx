@@ -3,10 +3,11 @@ import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { router, useLocalSearchParams } from 'expo-router';
 import ChevronLeft from 'lucide-react-native/icons/chevron-left';
 import { useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ItemDetailsContent, { type DetailAction } from '@/components/items/ItemDetailsContent';
 import { useReminderStatus } from '@/hooks/use-reminder-status';
+import { openNotificationSettings } from '@/services/notification-settings';
 import { useTheme } from '@/hooks/use-theme';
 import { nextScheduledReminder } from '@/utils/reminder-status';
 import { formatDateForDisplay } from '@/utils/item-form';
@@ -189,7 +190,7 @@ export default function ItemDetailsScreen() {
           nextReminder={nextReminder} activeAction={activeAction} error={actionError} message={feedback ?? savedMessage}
           onComplete={handleComplete} onRestore={handleRestore} onEdit={() => edit()} onReschedule={() => edit('schedule')}
           onCheckSchedule={() => setCheckVersion(value => value + 1)} onSnooze={handleSnooze} onRefresh={handleRefresh} onArchive={confirmArchive} onDelete={confirmDelete}
-          onSettings={() => { void Linking.openSettings().catch(() => setActionError('Open device settings to enable notifications.')); }} />
+          onSettings={() => { void openNotificationSettings().catch(() => setActionError('Open device settings to enable notifications.')); }} />
       </View>
     </ScrollView>
   </SafeAreaView>;

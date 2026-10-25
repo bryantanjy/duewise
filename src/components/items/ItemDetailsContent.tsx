@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import Check from 'lucide-react-native/icons/check';
 import Clock from 'lucide-react-native/icons/clock';
@@ -37,6 +37,11 @@ export default function ItemDetailsContent(props: Props) {
   const { fontScale } = useWindowDimensions();
   const [showSchedule, setShowSchedule] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(timer);
+  }, []);
   const busy = Boolean(activeAction);
   const days = daysUntil(item.targetDate);
   const dueStatus = item.archived ? 'Archived' : days < 0 ? `${Math.abs(days)}d overdue` : days === 0 ? 'Due today' : days === 1 ? 'Tomorrow' : `In ${days} days`;
@@ -45,17 +50,18 @@ export default function ItemDetailsContent(props: Props) {
   const schedule = reminders.map(row => {
     const queued = deviceStatus?.notifications.find(entry => entry.id === row.notificationId);
     const scheduledFor = queued?.scheduledFor ?? (!row.isSnooze ? reminderDateFor(item.targetDate, row.daysBefore, item.reminderTime).toISOString() : undefined);
-    const input = { ...row, scheduledFor, archived: item.archived, deviceStatus };
+    const input = { ...row, scheduledFor, archived: item.archived, deviceStatus, now };
     return { ...row, scheduledFor, status: alertScheduleStatus(input), missing: isMissingFutureAlert(input) };
   });
   const hasUnscheduled = schedule.some(row => row.missing);
+  const hasFutureConfigured = schedule.some(row => row.enabled && !row.isSnooze && row.scheduledFor && Date.parse(row.scheduledFor) > now);
   const hasEnabled = reminders.some(row => row.enabled && !row.isSnooze);
   const nextAlert = nextReminder && deviceStatus?.state === 'ready' && !item.archived ? nextReminder : undefined;
   const repeatDescription = item.repeatType === 'none' ? 'One-time reminder. Mark it done to move it to your archive.'
     : `Repeats ${item.repeatType === 'custom' ? `every ${item.repeatInterval} ${item.repeatInterval === 1 ? 'day' : 'days'}` : repeat.toLowerCase()} after you mark it complete. The next due date follows the current schedule; missed dates are skipped.`;
   const scheduleMessage = item.archived ? 'Alerts are paused while this item is archived.'
     : !deviceStatus ? 'Checking the notification schedule...'
-    : deviceStatus.state === 'blocked' ? 'Notifications are disabled on this device.'
+    : deviceStatus.state === 'blocked' ? deviceStatus.blockedReason === 'channel' ? 'The Duewise reminders channel is turned off.' : deviceStatus.blockedReason === 'channel-missing' ? 'The reminder channel needs to be set up on this phone.' : 'Notifications are disabled on this device.'
     : deviceStatus.state === 'unsupported' ? 'Notifications are unavailable in this environment.'
     : deviceStatus.state === 'error' ? 'The notification schedule could not be verified.'
     : nextAlert ? new Date(nextAlert).toLocaleString(undefined, { dateStyle: 'full', timeStyle: 'short' })
@@ -115,11 +121,12 @@ export default function ItemDetailsContent(props: Props) {
     <SectionTitle>Reminders</SectionTitle>
     <View style={{ ...panel, paddingHorizontal: 18 }}>
       <View style={{ paddingTop: 17, paddingBottom: 12 }}>
-        <Text style={{ fontSize: 12, lineHeight: 19, color: colors.textSecondary }}>{nextAlert ? 'Next alert' : 'Notification status'}</Text>
+        <Text style={{ fontSize: 12, lineHeight: 19, color: colors.textSecondary }}>{nextAlert ? deviceStatus?.timing === 'may-be-delayed' ? 'Next alert requested for' : 'Next alert' : 'Notification status'}</Text>
         <Text accessibilityLiveRegion="polite" style={{ marginTop: 5, fontSize: 14, lineHeight: 22, fontWeight: '500', color: colors.text }}>{scheduleMessage}</Text>
       </View>
-      {nextAlert ? <Text style={{ marginBottom: 12, fontSize: 12, lineHeight: 19, color: colors.textSecondary }}>Local time on this phone.</Text> : null}
-      {!item.archived && deviceStatus?.state === 'blocked' ? <TextAction label="Open notification settings" onPress={props.onSettings} disabled={busy} /> : null}
+      {nextAlert ? <Text style={{ marginBottom: 12, fontSize: 12, lineHeight: 19, color: colors.textSecondary }}>Local time on this phone.{deviceStatus?.timing === 'may-be-delayed' ? ' Android may deliver alerts later, especially while the phone is idle.' : ''}</Text> : null}
+      {!item.archived && deviceStatus?.state === 'blocked' && deviceStatus.blockedReason !== 'channel-missing' ? <TextAction label="Open notification settings" onPress={props.onSettings} disabled={busy} /> : null}
+      {!item.archived && deviceStatus?.state === 'blocked' && deviceStatus.blockedReason === 'channel-missing' && hasFutureConfigured ? <TextAction label={activeAction === 'refresh' ? 'Setting up...' : 'Set up reminder alerts'} onPress={props.onRefresh} disabled={busy} /> : null}
       {!item.archived && deviceStatus?.state === 'ready' && hasUnscheduled ? <View>
         <Text style={{ fontSize: 12, lineHeight: 19, color: colors.textSecondary }}>Retry to schedule the missing future alerts. Past alert times will be skipped.</Text>
         <TextAction label={activeAction === 'refresh' ? 'Scheduling...' : 'Retry future alerts'} onPress={props.onRefresh} disabled={busy} />
@@ -129,7 +136,7 @@ export default function ItemDetailsContent(props: Props) {
         <TextAction label="Check schedule again" onPress={props.onCheckSchedule} disabled={busy} />
       </View> : null}
       {!item.archived && deviceStatus?.state === 'unsupported' ? <Text style={{ paddingBottom: 12, fontSize: 12, lineHeight: 19, color: colors.textSecondary }}>Use an Android or iOS development or installed build to schedule and verify alerts.</Text> : null}
-      {!item.archived && deviceStatus?.state === 'ready' && !nextAlert && !hasUnscheduled ? <View>
+      {!item.archived && ((deviceStatus?.state === 'ready' && !nextAlert && !hasUnscheduled) || (deviceStatus?.blockedReason === 'channel-missing' && !hasFutureConfigured)) ? <View>
         <Text style={{ fontSize: 12, lineHeight: 19, color: colors.textSecondary }}>{hasEnabled ? 'The configured alert times have passed. Choose a future date or adjust your reminder days.' : 'Choose reminder days to receive alerts before or on the due date.'}</Text>
         <TextAction label="Edit date & alerts" onPress={props.onReschedule} disabled={busy} />
       </View> : null}

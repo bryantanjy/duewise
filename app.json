@@ -23,7 +23,13 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.bryan.duewise",
-      "userInterfaceStyle": "automatic"
+      "userInterfaceStyle": "automatic",
+      "allowBackup": false,
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ]
     },
     "web": {
       "output": "single",
@@ -59,7 +65,8 @@
           "color": "#5B50C5",
           "defaultChannel": "duewise-reminders"
         }
-      ]
+      ],
+      "./plugins/with-private-backups"
     ],
     "experiments": {
       "typedRoutes": true,

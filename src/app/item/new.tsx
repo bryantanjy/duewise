@@ -348,7 +348,7 @@ export default function NewItemScreen() {
                 <FormRow label="Date type" value={DATE_TYPES.find((option) => option.value === dateType)?.label ?? 'Custom'} divider onPress={() => openSelection('dateType')} />
               </View>
               <FormError message={fieldErrors.targetDate} />
-              <Text style={{ marginTop: 8, fontSize: 12, lineHeight: 19, color: colors.textSecondary }}>Each alert uses this time, in your local time zone.</Text>
+              <Text style={{ marginTop: 8, fontSize: 12, lineHeight: 19, color: colors.textSecondary }}>Each alert uses this time, in your local time zone.{Platform.OS === 'android' ? ' Android may deliver it later, especially while the phone is idle.' : ''}</Text>
               {showDatePicker || showTimePicker ? <View style={Platform.OS === 'ios' ? { ...panel, padding: 12, marginTop: 12 } : undefined}>
                 <DateTimePicker accentColor={colors.primaryFill} mode={showTimePicker ? 'time' : 'date'}
                   display={Platform.OS === 'ios' ? showTimePicker ? 'spinner' : 'inline' : 'default'}

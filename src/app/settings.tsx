@@ -20,11 +20,14 @@ import ChevronRight from 'lucide-react-native/icons/chevron-right';
 import Button from '@/components/ui/Button';
 import { notificationRuntimeSupported } from '@/utils/notification-runtime';
 import { useAppearance } from '@/contexts/appearance';
+import { useReminderStatus } from '@/hooks/use-reminder-status';
+import { openNotificationSettings } from '@/services/notification-settings';
 import { useTheme } from '@/hooks/use-theme';
 import type { backupPreview, Backup } from '@/utils/backup';
 
 export default function SettingsScreen() {
   const colors = useTheme();
+  const deviceStatus = useReminderStatus('');
   const { preference, setPreference } = useAppearance();
   const [isTesting, setIsTesting] = useState(false);
   const [message, setMessage] = useState<string>();
@@ -58,8 +61,8 @@ export default function SettingsScreen() {
       const notificationId = await scheduleTestNotification();
       setMessage(
         notificationId
-          ? 'Test scheduled. Put Duewise in the background and wait about 10 seconds.'
-          : 'Notification permission is disabled in device settings.',
+          ? 'Test requested. Put Duewise in the background and wait about 10 seconds.'
+          : 'Notifications or the Duewise reminders channel are disabled. Open notification settings to enable them.',
       );
     } catch (caughtError) {
       setMessage(caughtError instanceof Error ? caughtError.message : 'Unable to test notifications.');
@@ -146,19 +149,24 @@ export default function SettingsScreen() {
           <Text style={{ ...secondary, fontSize: 12, lineHeight: 19, marginTop: 10 }}>
             {runningInAndroidExpoGo ? 'Use a development build to test alerts on this phone.' : notificationRuntimeAvailable ? 'Send a test, then put Duewise in the background.' : 'Notification testing is available in the Android and iOS app.'}
           </Text>
+          {Platform.OS === 'android' && notificationRuntimeAvailable ? <Text style={{ ...secondary, fontSize: 12, lineHeight: 19, marginTop: 8 }}>Android may deliver alerts later than the selected time, especially while the phone is idle.</Text> : null}
+          {deviceStatus?.state === 'blocked' && deviceStatus.blockedReason !== 'channel-missing' ? <View style={{ marginTop: 12 }}>
+            <Text accessibilityLiveRegion="polite" style={secondary}>{deviceStatus.blockedReason === 'channel' ? 'The Duewise reminders channel is turned off.' : 'Notifications are turned off for Duewise.'}</Text>
+            <Button title="Open notification settings" variant="ghost" onPress={() => { void openNotificationSettings().catch(() => setMessage('Open your phone settings, then Duewise notifications.')); }} />
+          </View> : null}
           {message ? <Text accessibilityLiveRegion="polite" style={{ ...secondary, marginTop: 10 }}>{message}</Text> : null}
         </View>
       </View>
 
       <SectionLabel title="Backup & restore" />
       <View style={panel}>
-        <SettingsRow icon={<Download color={colors.textSecondary} size={20} strokeWidth={1.6} />} title="Save backup to folder" description="Keep a copy for your next phone."
+        <SettingsRow icon={<Download color={colors.textSecondary} size={20} strokeWidth={1.6} />} title="Save backup to folder" description="Use this copy to restore on your next phone."
           disabled={Boolean(backupAction) || filesUnavailable} loading={backupAction === 'export'} onPress={() => { void handleBackup('export'); }} />
         <SettingsRow divider icon={<Upload color={colors.textSecondary} size={20} strokeWidth={1.6} />} title="Choose backup to restore" description="Review the contents before adding them."
           disabled={Boolean(backupAction) || filesUnavailable} loading={backupAction === 'choose'} onPress={() => { void handleBackup('choose'); }} />
       </View>
       <Text style={{ ...secondary, fontSize: 12, lineHeight: 20, marginTop: 12, paddingHorizontal: 4 }}>Includes reminders, categories, notes, repeat rules, and history. Temporary snoozes stay on this phone.</Text>
-      <Text style={{ ...secondary, fontSize: 12, lineHeight: 20, marginTop: 6, paddingHorizontal: 4 }}>Backup files are not encrypted. Save them somewhere private.</Text>
+      <Text style={{ ...secondary, fontSize: 12, lineHeight: 20, marginTop: 6, paddingHorizontal: 4 }}>Backup files are not encrypted. Save them somewhere private. On Android, automatic cloud backup and phone transfer are disabled; save a manual backup before changing phones or uninstalling.</Text>
       {filesUnavailable ? <Text style={{ ...secondary, marginTop: 8 }}>File backup and restore are available in the Android and iOS app.</Text> : null}
       {pendingBackup ? <View style={{ ...panel, padding: 18, marginTop: 16 }}>
         <Text accessibilityRole="header" style={heading}>Review backup</Text>
@@ -179,7 +187,7 @@ export default function SettingsScreen() {
       <View style={panel}>
         <SettingsRow icon={<Archive color={colors.textSecondary} size={20} strokeWidth={1.6} />} title="Archived reminders" description="Review, restore, or permanently delete." onPress={() => router.push('/archived')} />
         <SettingsRow divider icon={<Database color={colors.textSecondary} size={20} strokeWidth={1.6} />} title="Stored on this phone" description="Your reminders are saved locally on your device." />
-        <SettingsRow divider icon={<ShieldCheck color={colors.textSecondary} size={20} strokeWidth={1.6} />} title="Private by design" description="No account needed. Your reminder data stays with you." />
+        <SettingsRow divider icon={<ShieldCheck color={colors.textSecondary} size={20} strokeWidth={1.6} />} title="Private by design" description="No account needed. Duewise does not send your reminders to its own servers." />
       </View>
       <Text style={{ ...secondary, fontSize: 12, textAlign: 'center', marginTop: 28 }}>Duewise / Version {Constants.expoConfig?.version ?? '1.1.0'}</Text>
     </ScrollView>

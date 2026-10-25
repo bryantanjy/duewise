@@ -44,3 +44,14 @@ Native delivery and notification button presentation still require a real-device
 - Complete a repeating reminder. Stay on Details and show Completed with the actual next due date. Confirm it matches the updated due-date card, including overdue reminders that skip missed dates.
 - Complete a one-time reminder and accept confirmation. It should stay visible as archived, show completion feedback, and offer Restore reminder.
 - Verify recurrence explanation for daily, weekly, monthly, yearly, and custom intervals. Completing early advances from the due date, rather than from the completion date.
+
+
+## Android release-hardening acceptance
+
+1. Rebuild/install the preview APK. Disable only the Duewise reminders notification channel in Android settings; leave app-wide permission enabled. Open Settings and a reminder. Both should explain that the channel is off, and Details must not show a next delivery as ready. The notification test should report disabled notifications/channel rather than success.
+2. Use Open notification settings. Confirm it opens the Duewise channel on supported Android versions, with ordinary app settings as a vendor fallback. Re-enable the channel and return; readiness should refresh. Retry missing future alerts when offered.
+3. If the reminder channel was deleted, use Set up reminder alerts for a future reminder. It should recreate the channel and schedule future alerts. Past-only or unconfigured alerts should instead offer editing.
+4. Confirm Android reminder forms, Settings, and Details explain that requested times may be delayed while idle. No exact-alarm special-access prompt is expected.
+5. On supported Android versions, save a manual backup, cancel a picker, and restore from a selected file. These must work without overlay or broad storage permission. Back up real data before uninstalling.
+6. Inspect the final release APK manifest: overlay and READ/WRITE_EXTERNAL_STORAGE should be absent; notification/reboot permissions should remain. Automatic backup should be false and the legacy/cloud/device-transfer exclusion resources should be present. Test OS backup/transfer on a spare device; these policies cannot erase already-exported copies.
+7. Install over a populated previous version without uninstalling. Confirm all reminders/history remain. Source-level migration regression tests also cover the earliest supported schema and failed-migration rollback.

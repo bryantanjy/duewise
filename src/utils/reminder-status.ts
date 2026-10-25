@@ -1,5 +1,7 @@
 export type ReminderDeviceStatus = {
   state: 'ready' | 'blocked' | 'unsupported' | 'error';
+  blockedReason?: 'permission' | 'channel' | 'channel-missing';
+  timing?: 'may-be-delayed';
   notifications: { id: string; scheduledFor?: string }[];
 };
 
@@ -7,7 +9,7 @@ export function reminderStatusLabel(notificationId: string | null, status?: Remi
   if (!status) return 'Checking...';
   if (status.state === 'unsupported') return 'Unavailable here';
   if (status.state === 'error') return 'Unable to verify';
-  if (status.state === 'blocked') return 'Notifications disabled';
+  if (status.state === 'blocked') return status.blockedReason === 'channel' ? 'Reminder channel disabled' : status.blockedReason === 'channel-missing' ? 'Reminder channel unavailable' : 'Notifications disabled';
   return notificationId && status.notifications.some((row) => row.id === notificationId)
     ? 'Scheduled' : 'Not scheduled';
 }

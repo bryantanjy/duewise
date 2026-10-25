@@ -1,6 +1,6 @@
 import '../global.css';
 
-import { useMigrations } from 'drizzle-orm/expo-sqlite/migrator';
+import { useDatabaseMigrations } from '@/hooks/use-database-migrations';
 import { isRunningInExpoGo } from 'expo';
 import type { NotificationResponse } from 'expo-notifications';
 import { DarkTheme, DefaultTheme, router, Stack, ThemeProvider } from 'expo-router';
@@ -11,18 +11,12 @@ import { ActivityIndicator, Alert, Platform, StyleSheet, Text, View } from 'reac
 
 import { COMPLETE_ACTION, reminderActionData } from '@/utils/notification-actions';
 
-import migrations from '../../drizzle/migrations';
-import { db } from '@/db';
 import { seedDefaultCategories } from '@/db/seed';
 import { runWithNotificationRuntime } from '@/utils/notification-runtime';
 import { createNotificationResponseCoordinator } from '@/utils/notification-routing';
 import { AppearanceProvider, useAppearance } from '@/contexts/appearance';
 import { useTheme } from '@/hooks/use-theme';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
-
-// Drizzle Kit 1.0 RC generates the runtime bundle without the legacy journal
-// field, while the migrator hook's declaration still requires it.
-const bundledMigrations = migrations as unknown as Parameters<typeof useMigrations>[1];
 
 export default function RootLayout() {
   return <AppearanceProvider><RootLayoutContent /></AppearanceProvider>;
@@ -45,7 +39,7 @@ function RootLayoutContent() {
     });
   }, [colors.homeBackground]);
 
-  const { success, error } = useMigrations(db, bundledMigrations);
+  const { success, error } = useDatabaseMigrations();
   const [seedComplete, setSeedComplete] = useState(false);
   const [seedError, setSeedError] = useState<Error>();
   const runningInAndroidExpoGo = Platform.OS === 'android' && isRunningInExpoGo();
