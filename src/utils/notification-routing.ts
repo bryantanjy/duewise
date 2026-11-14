@@ -1,4 +1,4 @@
-import { COMPLETE_ACTION, SNOOZE_ACTION, reminderActionData } from './notification-actions';
+import { COMPLETE_ACTION, SNOOZE_ACTION, SNOOZE_TOMORROW_ACTION, reminderActionData } from './notification-actions';
 
 type NotificationData = { itemId?: unknown; type?: unknown };
 
@@ -69,7 +69,7 @@ export function createNotificationResponseCoordinator(
       defaultActionIdentifier,
       requestIdentifier,
     }: NotificationResponseInput) {
-      if (actionIdentifier === COMPLETE_ACTION || actionIdentifier === SNOOZE_ACTION) {
+      if (actionIdentifier === COMPLETE_ACTION || actionIdentifier === SNOOZE_ACTION || actionIdentifier === SNOOZE_TOMORROW_ACTION) {
         if (!performAction || !requestIdentifier || !reminderActionData(data) || !deduper.accept(`${requestIdentifier}:${actionIdentifier}`)) return;
         pendingActions.push({ actionIdentifier, data, defaultActionIdentifier, requestIdentifier });
         drain();

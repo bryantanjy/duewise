@@ -1,5 +1,7 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { ActivityIndicator, findNodeHandle, Platform, Pressable, Text, View, useWindowDimensions } from 'react-native';
+import Share2 from 'lucide-react-native/icons/share-2';
+import Copy from 'lucide-react-native/icons/copy';
 import Check from 'lucide-react-native/icons/check';
 import Clock from 'lucide-react-native/icons/clock';
 import Pencil from 'lucide-react-native/icons/pencil';
@@ -16,19 +18,26 @@ import { repeatLabel } from '@/utils/recurrence';
 import { alertScheduleStatus, isMissingFutureAlert, type ReminderDeviceStatus } from '@/utils/reminder-status';
 import type { buildRenewalHistoryModel } from '@/utils/item-history-model';
 
+import { formatCost } from '@/utils/subscription-cost';
+
 export type DetailItem = {
+  costMinor?: number | null; costCurrency?: string | null;
   id: number; name: string; categoryName: string | null; categoryColor: string | null;
   targetDate: string; reminderTime: string; repeatType: string; repeatInterval: number;
   dateType: string; importance: string; archived: boolean; notes: string | null;
 };
 export type DetailReminder = { id: number; daysBefore: number; notificationId: string | null; isSnooze: boolean; enabled: boolean };
-export type DetailAction = 'complete' | 'restore' | 'snooze' | 'refresh' | 'archive' | 'delete';
+export type DetailAction = 'complete' | 'restore' | 'snooze' | 'refresh' | 'archive' | 'delete' | 'calendar' | 'share';
 type Props = {
   item: DetailItem; reminders: DetailReminder[]; history: NonNullable<ReturnType<typeof buildRenewalHistoryModel>>[];
   deviceStatus?: ReminderDeviceStatus; nextReminder?: string; activeAction?: DetailAction;
   error?: string; message?: string;
   onComplete: () => void; onRestore: () => void; onEdit: () => void; onReschedule: () => void;
   onCheckSchedule: () => void; onSnooze: () => void; onRefresh: () => void; onSettings: () => void; onArchive: () => void; onDelete: () => void;
+  onCalendarExport: () => void;
+  onDuplicate: () => void;
+  onShare: (anchor?: number) => void;
+  attachmentContent?: ReactNode;
 };
 
 export default function ItemDetailsContent(props: Props) {
@@ -42,6 +51,7 @@ export default function ItemDetailsContent(props: Props) {
     const timer = setInterval(() => setNow(Date.now()), 30000);
     return () => clearInterval(timer);
   }, []);
+  const shareAnchor = useRef<View>(null);
   const busy = Boolean(activeAction);
   const days = daysUntil(item.targetDate);
   const dueStatus = item.archived ? 'Archived' : days < 0 ? `${Math.abs(days)}d overdue` : days === 0 ? 'Due today' : days === 1 ? 'Tomorrow' : `In ${days} days`;
@@ -94,6 +104,7 @@ export default function ItemDetailsContent(props: Props) {
       <Text style={{ marginTop: 12, fontSize: 12, lineHeight: 19, color: colors.textSecondary }}>
         {repeatDescription}
       </Text>
+      {item.costMinor != null && item.costCurrency ? <Text style={{ marginTop: 12, color: colors.text, fontSize: 16, lineHeight: 24 }}>{formatCost(item.costMinor, item.costCurrency)} per occurrence</Text> : null}
     </View>
 
     <Pressable accessibilityRole="button" accessibilityState={{ disabled: busy, busy }} disabled={busy}
@@ -111,7 +122,7 @@ export default function ItemDetailsContent(props: Props) {
     {!item.archived ? <View style={{ flexDirection: fontScale > 1.3 ? 'column' : 'row', gap: 8, marginTop: 18 }}>
       <QuietAction label="Edit" icon={<Pencil size={16} color={colors.primary} />} disabled={busy} onPress={props.onEdit} />
       <QuietAction label="Date & time" icon={<Calendar size={16} color={colors.primary} />} disabled={busy} onPress={props.onReschedule} />
-      <QuietAction label={activeAction === 'snooze' ? 'Snoozing...' : 'Snooze 1h'} icon={<Clock size={16} color={colors.primary} />}
+      <QuietAction label={activeAction === 'snooze' ? 'Snoozing...' : 'Snooze'} icon={<Clock size={16} color={colors.primary} />}
         disabled={busy || deviceStatus?.state !== 'ready'} onPress={props.onSnooze} />
     </View> : null}
 
@@ -181,8 +192,21 @@ export default function ItemDetailsContent(props: Props) {
       </View>) : null}
     </View> : null}
 
+    {Platform.OS !== 'web' && !item.archived ? <View style={{ marginTop: 22, ...panel, paddingHorizontal: 18, paddingVertical: 6 }}>
+      <TextAction label={activeAction === 'calendar' ? 'Opening calendar...' : 'Add to calendar'}
+        icon={<Calendar size={17} color={colors.primary} />} onPress={props.onCalendarExport} disabled={busy} />
+      <Text style={{ color: colors.textSecondary, fontSize: 12, lineHeight: 19, marginBottom: 10 }}>Review one event for this due date before saving. Later changes do not sync.</Text>
+    </View> : null}
+
+    {Platform.OS !== 'web' ? <View ref={shareAnchor} collapsable={false} style={{ marginTop: 22, ...panel, paddingHorizontal: 18, paddingVertical: 6 }}>
+      <TextAction label={activeAction === 'share' ? 'Opening share sheet...' : 'Share reminder'} icon={<Share2 size={17} color={colors.primary} />}
+        onPress={() => props.onShare(findNodeHandle(shareAnchor.current) ?? undefined)} disabled={busy} />
+      <Text style={{ color: colors.textSecondary, fontSize: 12, lineHeight: 19, marginBottom: 10 }}>Share the name, due date, repeat schedule, and cost. Notes and attachments stay private.</Text>
+    </View> : null}
+    {props.attachmentContent}
     <SectionTitle>Manage reminder</SectionTitle>
     <View style={{ borderTopWidth: 1, borderTopColor: colors.border }}>
+      <TextAction label="Duplicate reminder" icon={<Copy size={17} color={colors.primary} />} onPress={props.onDuplicate} disabled={busy} />
       {!item.archived ? <TextAction label={activeAction === 'archive' ? 'Archiving...' : 'Archive reminder'} icon={<Archive size={17} color={colors.textSecondary} />} onPress={props.onArchive} disabled={busy} muted /> : null}
       <TextAction label={activeAction === 'delete' ? 'Deleting...' : 'Delete permanently'} icon={<Trash size={17} color={colors.danger} />} onPress={props.onDelete} disabled={busy} danger />
     </View>

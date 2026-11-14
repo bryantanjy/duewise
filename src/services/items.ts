@@ -1,3 +1,5 @@
+import { withDataGate } from './data-gate';
+import { validateCost } from '@/utils/subscription-cost';
 import { eq } from 'drizzle-orm';
 import { isRunningInExpoGo } from 'expo';
 import { Platform } from 'react-native';
@@ -14,6 +16,7 @@ import {
   processNotificationCleanup,
 } from '@/services/notification-cleanup';
 import { notificationRuntimeSupported } from '@/utils/notification-runtime';
+import { resolveSnoozeDate, type SnoozeChoice } from '@/utils/snooze';
 
 export { itemOperationResult, oldNotificationIds } from '@/services/item-operations';
 export { archivedReminderRows } from '@/services/item-operations';
@@ -27,6 +30,8 @@ async function loadNotificationService(): Promise<NotificationService | undefine
 }
 
 export type CreateItemInput = {
+  costMinor?: number | null;
+  costCurrency?: string | null;
   categoryId: number;
   dateType: string;
   importance: string;
@@ -49,6 +54,7 @@ type ItemTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 function itemValues(input: CreateItemInput) {
   return {
+    ...validateCost(input.costMinor, input.costCurrency),
     categoryId: input.categoryId,
     dateType: input.dateType,
     importance: input.importance,
@@ -185,7 +191,7 @@ async function withItemMutation<T>(itemId: number, work: () => Promise<T>): Prom
   const current = new Promise<void>((resolve) => { release = resolve; });
   pendingMutations.set(itemId, current);
   await previous;
-  try { return await work(); }
+  try { return await withDataGate(work); }
   finally {
     release();
     if (pendingMutations.get(itemId) === current) pendingMutations.delete(itemId);
@@ -193,7 +199,7 @@ async function withItemMutation<T>(itemId: number, work: () => Promise<T>): Prom
 }
 
 export async function createItem(input: CreateItemInput): Promise<CreateItemResult> {
-  return reportCompensationFailure('createItem', () => operations.createItem(input));
+  return withDataGate(() => reportCompensationFailure('createItem', () => operations.createItem(input)));
 }
 
 export async function rescheduleItem(itemId: number): Promise<CreateItemResult> {
@@ -230,18 +236,19 @@ export async function completeItem(itemId: number, expectedTargetDate?: string) 
   });
 }
 
-export async function snoozeItem(itemId: number, expectedTargetDate: string, requestId: string) {
-  return withItemMutation(itemId, () => snoozeItemUnlocked(itemId, expectedTargetDate, requestId));
+export async function snoozeItem(itemId: number, expectedTargetDate: string, requestId: string, choice: SnoozeChoice = 'hour') {
+  return withItemMutation(itemId, () => snoozeItemUnlocked(itemId, expectedTargetDate, requestId, choice));
 }
 
-async function snoozeItemUnlocked(itemId: number, expectedTargetDate: string, requestId: string) {
+async function snoozeItemUnlocked(itemId: number, expectedTargetDate: string, requestId: string, choice: SnoozeChoice) {
   const bundle = await repository.getItemBundle(itemId);
   if (!bundle || bundle.item.archived || bundle.item.targetDate !== expectedTargetDate) return;
   const notificationId = `duewise_snooze_${requestId}`;
   if (bundle.reminders.some((row) => row.notificationId === notificationId)) return;
   const service = await loadNotificationService();
   if (!service) throw new Error('Notifications are unavailable in this environment.');
-  const createdId = await service.scheduleSnoozedReminder({ itemId, itemName: bundle.item.name, targetDate: expectedTargetDate, requestId });
+  const scheduledFor = resolveSnoozeDate(choice, bundle.item.reminderTime);
+  const createdId = await service.scheduleSnoozedReminder({ itemId, itemName: bundle.item.name, targetDate: expectedTargetDate, requestId, scheduledFor });
   try {
     db.insert(reminders).values({ itemId, daysBefore: 0, isSnooze: true, notificationId: createdId }).run();
   } catch (error) {
@@ -249,4 +256,5 @@ async function snoozeItemUnlocked(itemId: number, expectedTargetDate: string, re
     await processNotificationCleanup();
     throw error;
   }
+  return scheduledFor;
 }

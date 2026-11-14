@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Tabs } from 'expo-router';
 import CalendarDays from 'lucide-react-native/icons/calendar-days';
 import House from 'lucide-react-native/icons/house';
@@ -7,6 +7,8 @@ import { useTheme } from '@/hooks/use-theme';
 
 export default function TabLayout() {
   const colors = useTheme();
+  const insets = useSafeAreaInsets();
+  const bottomPadding = Math.max(insets.bottom, 10);
 
   return (
     <Tabs
@@ -25,15 +27,15 @@ export default function TabLayout() {
         tabBarItemStyle: {
           borderRadius: 16,
           marginHorizontal: 4,
-          marginVertical: 6,
+          marginVertical: 0,
         },
         tabBarStyle: {
           backgroundColor: colors.surface,
           borderTopColor: colors.border,
           borderTopWidth: 0.5,
-          height: Platform.OS === 'ios' ? 84 : 68,
+          height: 58 + bottomPadding,
           paddingHorizontal: 8,
-          paddingBottom: Platform.OS === 'ios' ? 24 : 10,
+          paddingBottom: bottomPadding,
           paddingTop: 8,
           shadowColor: colors.shadow,
           shadowOffset: { width: 0, height: -8 },

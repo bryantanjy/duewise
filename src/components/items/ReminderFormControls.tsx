@@ -7,6 +7,7 @@ import ChevronRight from 'lucide-react-native/icons/chevron-right';
 import ChevronDown from 'lucide-react-native/icons/chevron-down';
 import ChevronUp from 'lucide-react-native/icons/chevron-up';
 import { useTheme } from '@/hooks/use-theme';
+import { useReducedMotion } from '@/hooks/use-reduced-motion';
 
 export function FormLabel({ children }: { children: ReactNode }) {
   const colors = useTheme();
@@ -49,18 +50,19 @@ export function SelectionSheet<T extends string | number>({ title, visible, opti
   const colors = useTheme();
   const insets = useSafeAreaInsets();
   const { fontScale } = useWindowDimensions();
-  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+  const reducedMotion = useReducedMotion();
+  return <Modal visible={visible} transparent animationType={reducedMotion ? 'none' : 'slide'} onRequestClose={onClose}>
     <View style={{ flex: 1, paddingTop: insets.top + 20, justifyContent: 'flex-end' }}>
       <Pressable accessibilityRole="button" accessibilityLabel={`Close ${title.toLowerCase()}`} onPress={onClose}
         style={{ position: 'absolute', inset: 0, backgroundColor: colors.shadow, opacity: 0.65 }} />
-      <View accessibilityViewIsModal style={{ maxHeight: '100%', borderTopLeftRadius: 24, borderTopRightRadius: 24, backgroundColor: colors.surface, paddingBottom: Math.max(16, insets.bottom) }}>
+      <View accessibilityViewIsModal style={{ maxHeight: '100%', borderTopLeftRadius: 24, borderTopRightRadius: 24, backgroundColor: colors.surfaceRaised, paddingBottom: Math.max(16, insets.bottom) }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingLeft: 22, paddingRight: 12, paddingTop: 10 }}>
           <Text accessibilityRole="header" style={{ fontSize: 19, lineHeight: 27, fontWeight: '600', color: colors.text }}>{title}</Text>
           <Pressable accessibilityRole="button" accessibilityLabel={`Close ${title.toLowerCase()}`} onPress={onClose} style={{ width: 48, height: 48, alignItems: 'center', justifyContent: 'center' }}><X size={21} color={colors.textSecondary} /></Pressable>
         </View>
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 22, paddingTop: 12, paddingBottom: 12 }}>
           <View accessibilityRole="radiogroup" accessibilityLabel={title} style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {options.map((option) => <Pressable key={option.value} accessibilityRole="radio" accessibilityState={{ selected: value === option.value }}
+            {options.map((option) => <Pressable key={option.value} accessibilityRole="radio" accessibilityState={{ checked: value === option.value }}
               onPress={() => onSelect(option.value)} style={({ pressed }) => ({ width: columns && fontScale <= 1.3 ? '48%' : '100%', minHeight: 56,
                 paddingHorizontal: 12, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 12, borderWidth: 1,
                 borderColor: value === option.value ? colors.primary : colors.border,

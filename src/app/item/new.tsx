@@ -1,11 +1,13 @@
 import { eq } from 'drizzle-orm';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { DateTimePicker } from '@expo/ui/community/datetime-picker';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, useNavigation } from 'expo-router';
+import { usePreventRemove } from 'expo-router/react-navigation';
 import { CalendarDays, Check, Clock, X } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -33,6 +35,7 @@ import {
   type ItemFormField,
 } from '@/utils/item-form';
 import { scrollOffsetToShowField } from '@/utils/keyboard-scroll';
+import { REMINDER_TEMPLATES, templateFormValues } from '@/utils/reminder-templates';
 import {
   DEFAULT_REMINDER_DAYS,
   REMINDER_PRESETS,
@@ -44,6 +47,9 @@ import {
 import { DEFAULT_REMINDER_TIME, formatReminderTime, reminderDateFor, toStoredTime } from '@/utils/reminder-time';
 
 import { REPEAT_OPTIONS, repeatLabel, type RepeatType } from '@/utils/recurrence';
+
+import { duplicateReminderDraft } from '@/utils/duplicate-reminder';
+import { COST_CURRENCIES, costInput, parseCostAmount } from '@/utils/subscription-cost';
 
 const categoryQuery = db.select().from(categories).orderBy(categories.id);
 const DATE_TYPES = [
@@ -64,17 +70,22 @@ export default function NewItemScreen() {
   const colors = useTheme();
   const { resolvedTheme } = useAppearance();
   const insets = useSafeAreaInsets();
-  const { editId, section, date } = useLocalSearchParams<{ editId?: string; section?: string; date?: string }>();
+  const navigation = useNavigation();
+  const { editId, copyId, section, date } = useLocalSearchParams<{ editId?: string; copyId?: string; section?: string; date?: string }>();
   const parsedEditId = Number(editId);
   const safeEditId = Number.isInteger(parsedEditId) ? parsedEditId : -1;
   const isEditing = safeEditId > 0;
+  const parsedCopyId = Number(copyId);
+  const isCopying = !isEditing && copyId !== undefined;
+  const sourceId = isEditing ? safeEditId : Number.isSafeInteger(parsedCopyId) && parsedCopyId > 0 ? parsedCopyId : -1;
+  const needsSource = isEditing || isCopying;
   const editItemQuery = useMemo(
-    () => db.select().from(items).where(eq(items.id, safeEditId)),
-    [safeEditId],
+    () => db.select().from(items).where(eq(items.id, sourceId)),
+    [sourceId],
   );
   const editReminderQuery = useMemo(
-    () => db.select().from(reminders).where(eq(reminders.itemId, safeEditId)),
-    [safeEditId],
+    () => db.select().from(reminders).where(eq(reminders.itemId, sourceId)),
+    [sourceId],
   );
   const { data: categoryOptions, error: categoryError } = useLiveQuery(categoryQuery);
   const { data: editItemRows, updatedAt: editItemUpdatedAt, error: editItemError } = useLiveQuery(editItemQuery);
@@ -113,22 +124,53 @@ export default function NewItemScreen() {
   const [reminderDays, setReminderDays] = useState<number[]>(DEFAULT_REMINDER_DAYS);
   const [customReminderDay, setCustomReminderDay] = useState('');
   const [notes, setNotes] = useState('');
+  const [costAmount, setCostAmount] = useState('');
+  const [costCurrency, setCostCurrency] = useState<string>('MYR');
+  const costInputRef = useRef<TextInput>(null);
   const [fieldErrors, setFieldErrors] = useState<
     Partial<Record<ItemFormField, string>>
   >({});
   const [submissionError, setSubmissionError] = useState<string>();
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [selection, setSelection] = useState<'category' | 'repeat' | 'dateType'>();
+  const [selection, setSelection] = useState<'category' | 'repeat' | 'dateType' | 'template'>();
+  const [templateMessage, setTemplateMessage] = useState<string>();
+  const [appliedTemplateId, setAppliedTemplateId] = useState<string>();
   const [showAlerts, setShowAlerts] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
   const [intervalError, setIntervalError] = useState<string>();
-  const editReady = !isEditing || Boolean(editItemRows[0] && editItemUpdatedAt && editReminderUpdatedAt);
+  const editReady = !needsSource || Boolean(editItemRows[0] && editItemUpdatedAt && editReminderUpdatedAt);
   const loadError = categoryError ?? editItemError ?? editReminderError;
-  const missingEditItem = isEditing && editItemUpdatedAt && editItemRows.length === 0;
-
-
-
+  const missingEditItem = needsSource && editItemUpdatedAt && editItemRows.length === 0;
+  // Compare values rather than interaction flags so reverting an edit clears the guard.
+  // An automatically loaded default category isn't a user edit on a new reminder.
+  const draftCategory = !isEditing && categoryOverride === categoryOptions[0]?.id ? undefined : categoryOverride;
+  const draftSnapshot = JSON.stringify({ name, categoryId: draftCategory, dateType,
+    targetDate, reminderTime, importance, repeatType, repeatInterval,
+    reminderDays: [...reminderDays].sort((a, b) => a - b), customReminderDay, notes, costAmount, costCurrency });
+  const [initialSnapshot, setInitialSnapshot] = useState<string | undefined>(() => isEditing ? undefined : draftSnapshot);
+  const [savedResult, setSavedResult] = useState<Awaited<ReturnType<typeof createItem>>>();
+  const hasChanges = initialSnapshot !== undefined && initialSnapshot !== draftSnapshot;
+  usePreventRemove(!savedResult && (hasChanges || isSaving), ({ data }) => {
+    if (isSaving) return;
+    const discard = () => navigation.dispatch(data.action);
+    if (Platform.OS === 'web') {
+      if (window.confirm('Discard your unsaved changes?')) discard();
+      return;
+    }
+    Alert.alert('Discard changes?', 'Your unsaved changes will be lost.', [
+      { text: 'Keep editing', style: 'cancel' },
+      { text: 'Discard', style: 'destructive', onPress: discard },
+    ]);
+  });
+  // Wait for the guard to be disabled before replacing the saved form route.
+  useEffect(() => {
+    if (!savedResult) return;
+    router.replace({ pathname: '/item/[id]', params: {
+      [isEditing ? 'updated' : 'created']: '1', id: String(savedResult.itemId),
+      scheduled: String(savedResult.scheduledReminderCount), skipped: String(savedResult.skippedReminderCount),
+    } });
+  }, [savedResult, isEditing]);
   const scrollFocusedInputIntoView = useCallback(() => {
     const input = focusedInput.current;
     const scroller = scrollRef.current;
@@ -183,8 +225,10 @@ export default function NewItemScreen() {
 
 
   useEffect(() => {
-    const item = editItemRows[0];
-    if (!isEditing || !item || !editItemUpdatedAt || !editReminderUpdatedAt || didHydrateEdit.current) return;
+    const source = editItemRows[0];
+    const copyDraft = source && isCopying ? duplicateReminderDraft(source, editReminderRows) : undefined;
+    const item = copyDraft ?? source;
+    if (!needsSource || !item || !editItemUpdatedAt || !editReminderUpdatedAt || didHydrateEdit.current) return;
 
     didHydrateEdit.current = true;
     setName(item.name);
@@ -195,9 +239,16 @@ export default function NewItemScreen() {
     setImportance(item.importance as (typeof IMPORTANCE_OPTIONS)[number]);
     setRepeatType(item.repeatType as RepeatType);
     setRepeatInterval(String(item.repeatInterval));
-    setReminderDays(normalizeReminderDays(editReminderRows.filter((row) => !row.isSnooze).map(({ daysBefore }) => daysBefore)));
+    setReminderDays(copyDraft?.reminderDays ?? normalizeReminderDays(editReminderRows.filter((row) => !row.isSnooze).map(({ daysBefore }) => daysBefore)));
     setNotes(item.notes ?? '');
-  }, [categoryOptions, editItemRows, editItemUpdatedAt, editReminderRows, editReminderUpdatedAt, isEditing]);
+    setCostAmount(costInput(item.costMinor));
+    setCostCurrency(item.costCurrency ?? 'MYR');
+    setInitialSnapshot(previous => isEditing ? JSON.stringify({ name: item.name, categoryId: item.categoryId ?? categoryOptions[0]?.id,
+      dateType: item.dateType, targetDate: item.targetDate, reminderTime: item.reminderTime,
+      importance: item.importance, repeatType: item.repeatType, repeatInterval: String(item.repeatInterval),
+      reminderDays: normalizeReminderDays(editReminderRows.filter((row) => !row.isSnooze && (!isCopying || row.enabled)).map(({ daysBefore }) => daysBefore)).sort((a, b) => a - b),
+      customReminderDay: '', notes: item.notes ?? '', costAmount: costInput(item.costMinor), costCurrency: item.costCurrency ?? 'MYR' }) : previous);
+  }, [categoryOptions, editItemRows, editItemUpdatedAt, editReminderRows, editReminderUpdatedAt, isEditing, isCopying, needsSource]);
 
   const scrollToSchedule = useCallback(() => {
     if (section !== 'schedule' || !didHydrateEdit.current || didScrollToSchedule.current || scheduleOffset.current === undefined) return;
@@ -248,6 +299,12 @@ export default function NewItemScreen() {
       scrollToOffset(repeatOffset.current);
       return;
     }
+    let costMinor: number | null;
+    try { costMinor = parseCostAmount(costAmount); } catch (error) {
+      setSubmissionError((error as Error).message);
+      costInputRef.current?.focus();
+      return;
+    }
     saveLock.current = true;
     Keyboard.dismiss();
     setIsSaving(true);
@@ -258,6 +315,8 @@ export default function NewItemScreen() {
         importance,
         name,
         notes,
+        costMinor,
+        costCurrency: costMinor === null ? null : costCurrency,
         reminderDays: validation.parsedReminderDays ?? [],
         repeatType,
         repeatInterval: repeatType === 'custom' ? Number(repeatInterval) : 1,
@@ -268,15 +327,7 @@ export default function NewItemScreen() {
         ? await updateItem(safeEditId, input)
         : await createItem(input);
 
-      router.replace({
-        pathname: '/item/[id]',
-        params: {
-          [isEditing ? 'updated' : 'created']: '1',
-          id: String(result.itemId),
-          scheduled: String(result.scheduledReminderCount),
-          skipped: String(result.skippedReminderCount),
-        },
-      });
+      setSavedResult(result);
     } catch (error) {
       setSubmissionError(error instanceof Error ? error.message : 'Unable to save this item.');
       saveLock.current = false;
@@ -287,9 +338,27 @@ export default function NewItemScreen() {
   function scrollToOffset(offset: number) {
     requestAnimationFrame(() => requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: Math.max(0, offset - 12), animated: false })));
   }
-  function openSelection(next: 'category' | 'repeat' | 'dateType') {
+  function openSelection(next: 'category' | 'repeat' | 'dateType' | 'template') {
     Keyboard.dismiss(); focusedInput.current = null;
     setShowDatePicker(false); setShowTimePicker(false); setSelection(next);
+  }
+  function applyTemplate(templateId: string) {
+    if (isEditing || isSaving) return;
+    const values = templateFormValues(templateId, categoryOptions, { name, categoryId, previousTemplateId: appliedTemplateId });
+    if (!values) return;
+    setName(values.name);
+    setCategoryId(values.categoryId);
+    setDateType(values.dateType);
+    setRepeatType(values.repeatType);
+    setRepeatInterval(values.repeatInterval);
+    setReminderDays(values.reminderDays);
+    setCustomReminderDay('');
+    setIntervalError(undefined);
+    setFieldErrors({});
+    setSubmissionError(undefined);
+    setAppliedTemplateId(templateId);
+    setTemplateMessage(`${REMINDER_TEMPLATES.find(({ id }) => id === templateId)?.label} settings applied. Check the date and adjust any field below.`);
+    setSelection(undefined);
   }
   function toggleOptional(field: 'alerts' | 'notes') {
     Keyboard.dismiss(); focusedInput.current = null;
@@ -300,7 +369,9 @@ export default function NewItemScreen() {
   const panel = { borderWidth: 1, borderColor: colors.border, borderRadius: 14, backgroundColor: colors.surface, overflow: 'hidden' as const };
   const inputStyle = { minHeight: 52, borderWidth: 1, borderColor: colors.border, borderRadius: 14,
     paddingHorizontal: 16, paddingVertical: 13, fontSize: 15, lineHeight: 23, color: colors.text, backgroundColor: colors.surface };
-  const selectionOptions = selection === 'category'
+  const selectionOptions = selection === 'template'
+    ? REMINDER_TEMPLATES.map((template) => ({ value: template.id as string | number, label: `${template.label}\n${template.summary}` }))
+    : selection === 'category'
     ? categoryOptions.map((category) => ({ value: category.id as string | number, label: category.name, icon: <CategoryIcon icon={category.icon} color={category.color} /> }))
     : selection === 'repeat' ? REPEAT_OPTIONS.map((option) => ({ value: option.value as string | number, label: option.label }))
     : DATE_TYPES.map((option) => ({ value: option.value as string | number, label: option.label }));
@@ -308,10 +379,10 @@ export default function NewItemScreen() {
   return <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: colors.homeBackground }}>
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
       <View style={{ paddingHorizontal: 22, paddingVertical: 6, width: '100%', maxWidth: 684, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Cancel and go back" onPress={() => router.back()} style={{ minHeight: 48, minWidth: 56, justifyContent: 'center' }}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Cancel and go back" disabled={isSaving} accessibilityState={{ disabled: isSaving }} onPress={() => router.back()} style={{ minHeight: 48, minWidth: 56, justifyContent: 'center', opacity: isSaving ? 0.5 : 1 }}>
           <Text style={{ fontSize: 14, color: colors.textSecondary }}>Cancel</Text>
         </Pressable>
-        <Text accessibilityRole="header" style={{ flex: 1, textAlign: 'center', fontSize: 17, lineHeight: 25, fontWeight: '600', color: colors.text, letterSpacing: -0.3 }}>{isEditing ? 'Edit reminder' : 'New reminder'}</Text>
+        <Text accessibilityRole="header" style={{ flex: 1, textAlign: 'center', fontSize: 17, lineHeight: 25, fontWeight: '600', color: colors.text, letterSpacing: -0.3 }}>{isEditing ? 'Edit reminder' : isCopying ? 'Duplicate reminder' : 'New reminder'}</Text>
         {keyboardVisible ? <Pressable accessibilityRole="button" accessibilityLabel="Dismiss keyboard" onPress={Keyboard.dismiss} style={{ minHeight: 48, minWidth: 56, alignItems: 'flex-end', justifyContent: 'center' }}>
           <Text style={{ fontSize: 14, color: colors.primary }}>Done</Text>
         </Pressable> : <View style={{ width: 56 }} />}
@@ -325,6 +396,14 @@ export default function NewItemScreen() {
           contentContainerStyle={{ paddingHorizontal: 22, paddingTop: 14, paddingBottom: 30 }}>
           <View style={{ width: '100%', maxWidth: 640, alignSelf: 'center' }}>
             {loadError || missingEditItem ? <Text accessibilityRole="alert" style={{ fontSize: 13, lineHeight: 21, color: colors.danger, marginBottom: 16 }}>{missingEditItem ? 'This reminder no longer exists. Go back to your reminders.' : 'Unable to load the form. Go back and try again.'}</Text> : null}
+            {isCopying ? <Text style={{ color: colors.textSecondary, fontSize: 13, lineHeight: 21, marginBottom: 20 }}>Review this copy and choose its due date before saving. Attachments and history stay with the original reminder.</Text> : null}
+            {!needsSource ? <View style={{ marginBottom: 22 }}>
+              <View style={panel}><FormRow label="Start from a template" value="Choose a preset"
+                onPress={() => openSelection('template')} /></View>
+              <Text accessibilityLiveRegion="polite" style={{ marginTop: 8, fontSize: 12, lineHeight: 19, color: colors.textSecondary }}>
+                {templateMessage ?? 'Optional. Fills category, date type, repeat, and alerts. Your name, date, time, and notes stay editable.'}
+              </Text>
+            </View> : null}
             <FormLabel>Name</FormLabel>
             <TextInput ref={nameInputRef} accessibilityLabel="Item name" value={name} placeholder="e.g. Passport renewal"
               placeholderTextColor={colors.textSecondary} returnKeyType="done" onFocus={() => focusInput(nameInputRef.current)}
@@ -378,7 +457,7 @@ export default function NewItemScreen() {
               <Text style={{ marginTop: 8, fontSize: 12, lineHeight: 19, color: colors.textSecondary }}>{repeatType === 'none' ? 'Marking done moves this reminder to your archive.' : 'Mark done to schedule the next occurrence. Missed dates are skipped.'}</Text>
               <View style={{ marginTop: 18 }}><FormLabel>Priority</FormLabel>
                 <View accessibilityRole="radiogroup" accessibilityLabel="Priority" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                  {IMPORTANCE_OPTIONS.map((option) => <Pressable key={option} accessibilityRole="radio" accessibilityState={{ selected: importance === option }}
+                  {IMPORTANCE_OPTIONS.map((option) => <Pressable key={option} accessibilityRole="radio" accessibilityState={{ checked: importance === option }}
                     onPress={() => setImportance(option)} style={({ pressed }) => ({ flex: 1, minHeight: 48, minWidth: 70, padding: 10, justifyContent: 'center', alignItems: 'center', borderRadius: 12, borderWidth: 1,
                       borderColor: importance === option ? colors.primary : colors.border, backgroundColor: importance === option ? colors.primarySoft : pressed ? colors.surfaceInset : colors.surface })}>
                     <Text style={{ fontSize: 13, lineHeight: 20, textTransform: 'capitalize', color: importance === option ? colors.primary : colors.text }}>{option}</Text>
@@ -431,6 +510,18 @@ export default function NewItemScreen() {
                   style={{ ...inputStyle, minHeight: 112, fontSize: 14, lineHeight: 24 }} />
               </View> : null}
             </View>
+            <View style={{ marginTop: 26 }}>
+              <FormHeading>Cost (optional)</FormHeading>
+              <Text style={{ color: colors.textSecondary, marginBottom: 12, lineHeight: 20 }}>Amount per occurrence. Recurring costs use the repeat schedule above. Leave blank to remove the cost.</Text>
+              <TextInput ref={costInputRef} accessibilityLabel="Cost per occurrence" keyboardType="decimal-pad" value={costAmount} onChangeText={setCostAmount}
+                onFocus={() => focusInput(costInputRef.current)} placeholder="e.g. 29.90" placeholderTextColor={colors.textSecondary} style={inputStyle} maxLength={10} />
+              <View accessibilityRole="radiogroup" accessibilityLabel="Currency" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+                {COST_CURRENCIES.map(code => <Pressable key={code} accessibilityRole="radio" accessibilityState={{ checked: costCurrency === code }} onPress={() => setCostCurrency(code)}
+                  style={{ minHeight: 48, paddingHorizontal: 14, justifyContent: 'center', borderRadius: 12, borderWidth: 1, borderColor: costCurrency === code ? colors.primary : colors.border, backgroundColor: costCurrency === code ? colors.primarySoft : colors.surface }}>
+                  <Text style={{ color: costCurrency === code ? colors.primary : colors.text }}>{code}</Text>
+                </Pressable>)}
+              </View>
+            </View>
             {submissionError ? <View style={{ marginTop: 18 }}><FormError message={submissionError} /></View> : null}
           </View>
         </ScrollView>
@@ -445,9 +536,10 @@ export default function NewItemScreen() {
         </Pressable>
       </View>
     </KeyboardAvoidingView>
-    <SelectionSheet title={selection === 'category' ? 'Choose category' : selection === 'repeat' ? 'Repeat' : 'Date type'} visible={Boolean(selection)}
-      options={selectionOptions} value={selection === 'category' ? categoryId : selection === 'repeat' ? repeatType : dateType} columns={selection === 'category'}
+    <SelectionSheet title={selection === 'template' ? 'Reminder templates' : selection === 'category' ? 'Choose category' : selection === 'repeat' ? 'Repeat' : 'Date type'} visible={Boolean(selection)}
+      options={selectionOptions} value={selection === 'template' ? undefined : selection === 'category' ? categoryId : selection === 'repeat' ? repeatType : dateType} columns={selection === 'category'}
       onClose={() => setSelection(undefined)} onSelect={(value) => {
+        if (selection === 'template') { applyTemplate(String(value)); return; }
         if (selection === 'category') { setCategoryId(Number(value)); clearFieldError('category'); }
         else if (selection === 'repeat') { setRepeatType(value as RepeatType); setIntervalError(undefined); }
         else setDateType(value as typeof dateType);

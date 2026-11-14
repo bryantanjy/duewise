@@ -118,7 +118,7 @@ export default function Button({
       case 'ghost':
         return colors.primary;
       case 'danger':
-        return colors.onPrimary;
+        return colors.onDanger;
       case 'primary':
       default:
         return colors.onPrimary;

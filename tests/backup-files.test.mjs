@@ -57,8 +57,8 @@ test('cancelled file selection does not read a file and oversized files are reje
   globalThis.__backupFileRead = 0;
   globalThis.__backupDocumentPick = async () => ({ canceled: true });
   assert.equal(await chooseBackupFile(), undefined);
-  globalThis.__backupDocumentPick = async () => ({ canceled: false, assets: [{ name: 'large.json', uri: 'file:///selected', size: 11 * 1024 * 1024 }] });
-  await assert.rejects(chooseBackupFile(), /10 MB/);
+  globalThis.__backupDocumentPick = async () => ({ canceled: false, assets: [{ name: 'large.json', uri: 'file:///selected', size: 51 * 1024 * 1024 }] });
+  await assert.rejects(chooseBackupFile(), /50 MB/);
   assert.equal(globalThis.__backupFileRead, 0);
 });
 
@@ -88,7 +88,7 @@ test('Android picker cancellation and oversize detection do not read backup cont
   globalThis.__backupNativePick = async () => ({ canceled: true, result: null });
   assert.equal(await chooseBackupFile(), undefined);
   let reads = 0;
-  globalThis.__backupNativePick = async () => ({ canceled: false, result: { name: 'large.json', size: 11 * 1024 * 1024, text: async () => { reads++; return '{}'; } } });
-  await assert.rejects(chooseBackupFile(), /10 MB/);
+  globalThis.__backupNativePick = async () => ({ canceled: false, result: { name: 'large.json', size: 51 * 1024 * 1024, text: async () => { reads++; return '{}'; } } });
+  await assert.rejects(chooseBackupFile(), /50 MB/);
   assert.equal(reads, 0);
 });

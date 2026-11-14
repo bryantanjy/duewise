@@ -12,18 +12,21 @@ import Moon from 'lucide-react-native/icons/moon';
 import Sun from 'lucide-react-native/icons/sun';
 import Download from 'lucide-react-native/icons/download';
 import Upload from 'lucide-react-native/icons/upload';
+import LayoutGrid from 'lucide-react-native/icons/layout-grid';
 import { type ReactNode, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import ChevronRight from 'lucide-react-native/icons/chevron-right';
 import Button from '@/components/ui/Button';
+import { Colors } from '@/constants/theme';
 import { notificationRuntimeSupported } from '@/utils/notification-runtime';
 import { useAppearance } from '@/contexts/appearance';
 import { useReminderStatus } from '@/hooks/use-reminder-status';
 import { openNotificationSettings } from '@/services/notification-settings';
 import { useTheme } from '@/hooks/use-theme';
 import type { backupPreview, Backup } from '@/utils/backup';
+import { widgetSetupErrorMessage } from '@/utils/widget-setup-error';
 
 export default function SettingsScreen() {
   const colors = useTheme();
@@ -31,6 +34,8 @@ export default function SettingsScreen() {
   const { preference, setPreference } = useAppearance();
   const [isTesting, setIsTesting] = useState(false);
   const [message, setMessage] = useState<string>();
+  const [widgetBusy, setWidgetBusy] = useState(false);
+  const [widgetMessage, setWidgetMessage] = useState<string>();
   const [backupAction, setBackupAction] = useState<'export' | 'choose' | 'restore'>();
   const backupBusy = useRef(false);
   const [backupMessage, setBackupMessage] = useState<string>();
@@ -68,6 +73,19 @@ export default function SettingsScreen() {
       setMessage(caughtError instanceof Error ? caughtError.message : 'Unable to test notifications.');
     } finally {
       setIsTesting(false);
+    }
+  }
+
+  async function addWidget() {
+    if (widgetBusy) return;
+    setWidgetBusy(true);
+    try {
+      const { addHomeWidget } = await import('@/services/home-widget');
+      setWidgetMessage(await addHomeWidget());
+    } catch (error) {
+      setWidgetMessage(widgetSetupErrorMessage(error));
+    } finally {
+      setWidgetBusy(false);
     }
   }
 
@@ -128,17 +146,33 @@ export default function SettingsScreen() {
             { label: 'Dark', value: 'dark', Icon: Moon },
           ] as const).map(({ label, value, Icon }) => {
             const selected = preference === value;
+            const preview = Colors[value === 'system' ? 'light' : value];
             return <Pressable key={value} accessibilityRole="radio" accessibilityLabel={`${label} appearance`} accessibilityState={{ checked: selected }}
               onPress={() => setPreference(value)} style={({ pressed }) => ({ flex: 1, minHeight: 86, paddingVertical: 14, paddingHorizontal: 4, borderRadius: 14,
                 borderWidth: 1, borderColor: selected ? colors.primary : colors.border, backgroundColor: selected ? colors.primarySoft : colors.surface,
                 alignItems: 'center', justifyContent: 'center', gap: 9, opacity: pressed ? 0.65 : 1 })}>
-              <Icon color={selected ? colors.primary : colors.textSecondary} size={21} strokeWidth={1.6} />
+              <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ width: 48, height: 34, padding: 5, borderRadius: 8, backgroundColor: preview.background, borderWidth: 1, borderColor: preview.border }}>
+                <View style={{ flex: 1, borderRadius: 4, backgroundColor: value === 'system' ? Colors.dark.surface : preview.surface, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                  <Icon color={value === 'system' ? Colors.dark.primary : preview.primary} size={14} strokeWidth={1.6} />
+                  <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: preview.heroAccent }} />
+                </View>
+              </View>
               <Text style={{ fontSize: 12, lineHeight: 19, color: selected ? colors.primary : colors.textSecondary, fontWeight: selected ? '600' : '400' }}>{label}</Text>
               {selected ? <View style={{ position: 'absolute', right: 6, top: 6 }}><Check color={colors.primary} size={12} /></View> : null}
             </Pressable>;
           })}
         </View>
       </View>
+
+      {Platform.OS !== 'web' ? <>
+        <SectionLabel title="Home-screen widget" />
+        <View style={panel}>
+          <SettingsRow icon={<LayoutGrid color={colors.textSecondary} size={20} strokeWidth={1.6} />}
+            title="Add Duewise to your home screen" description="See upcoming dates and open a reminder with a tap."
+            loading={widgetBusy} onPress={() => { void addWidget(); }} />
+        </View>
+        {widgetMessage ? <Text accessibilityLiveRegion="polite" style={{ ...secondary, marginTop: 10 }}>{widgetMessage}</Text> : null}
+      </> : null}
 
       <SectionLabel title="Notifications" />
       <View style={panel}>
@@ -158,6 +192,10 @@ export default function SettingsScreen() {
         </View>
       </View>
 
+      <SectionLabel title="Cloud sync" />
+      <View style={panel}>
+        <SettingsRow icon={<Database color={colors.textSecondary} size={20} strokeWidth={1.6} />} title="Optional cloud sync" description="Sign in to sync reminders across your devices." onPress={() => router.push('/cloud-sync')} />
+      </View>
       <SectionLabel title="Backup & restore" />
       <View style={panel}>
         <SettingsRow icon={<Download color={colors.textSecondary} size={20} strokeWidth={1.6} />} title="Save backup to folder" description="Use this copy to restore on your next phone."
@@ -165,7 +203,7 @@ export default function SettingsScreen() {
         <SettingsRow divider icon={<Upload color={colors.textSecondary} size={20} strokeWidth={1.6} />} title="Choose backup to restore" description="Review the contents before adding them."
           disabled={Boolean(backupAction) || filesUnavailable} loading={backupAction === 'choose'} onPress={() => { void handleBackup('choose'); }} />
       </View>
-      <Text style={{ ...secondary, fontSize: 12, lineHeight: 20, marginTop: 12, paddingHorizontal: 4 }}>Includes reminders, categories, notes, repeat rules, and history. Temporary snoozes stay on this phone.</Text>
+      <Text style={{ ...secondary, fontSize: 12, lineHeight: 20, marginTop: 12, paddingHorizontal: 4 }}>Includes reminders, attachments, categories, notes, repeat rules, and history. Temporary snoozes stay on this phone.</Text>
       <Text style={{ ...secondary, fontSize: 12, lineHeight: 20, marginTop: 6, paddingHorizontal: 4 }}>Backup files are not encrypted. Save them somewhere private. On Android, automatic cloud backup and phone transfer are disabled; save a manual backup before changing phones or uninstalling.</Text>
       {filesUnavailable ? <Text style={{ ...secondary, marginTop: 8 }}>File backup and restore are available in the Android and iOS app.</Text> : null}
       {pendingBackup ? <View style={{ ...panel, padding: 18, marginTop: 16 }}>
@@ -187,9 +225,9 @@ export default function SettingsScreen() {
       <View style={panel}>
         <SettingsRow icon={<Archive color={colors.textSecondary} size={20} strokeWidth={1.6} />} title="Archived reminders" description="Review, restore, or permanently delete." onPress={() => router.push('/archived')} />
         <SettingsRow divider icon={<Database color={colors.textSecondary} size={20} strokeWidth={1.6} />} title="Stored on this phone" description="Your reminders are saved locally on your device." />
-        <SettingsRow divider icon={<ShieldCheck color={colors.textSecondary} size={20} strokeWidth={1.6} />} title="Private by design" description="No account needed. Duewise does not send your reminders to its own servers." />
+        <SettingsRow divider icon={<ShieldCheck color={colors.textSecondary} size={20} strokeWidth={1.6} />} title="Private by design" description="No account needed for local use. Cloud uploads happen only after you enable sync." />
       </View>
-      <Text style={{ ...secondary, fontSize: 12, textAlign: 'center', marginTop: 28 }}>Duewise / Version {Constants.expoConfig?.version ?? '1.1.0'}</Text>
+      <Text style={{ ...secondary, fontSize: 12, textAlign: 'center', marginTop: 28 }}>Duewise / Version {Constants.expoConfig?.version ?? '1.9.3'}</Text>
     </ScrollView>
   </SafeAreaView>;
 }

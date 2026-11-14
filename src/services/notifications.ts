@@ -1,7 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
-import { REMINDER_CATEGORY, SNOOZE_ACTION, COMPLETE_ACTION } from '../utils/notification-actions';
+import { REMINDER_CATEGORY, SNOOZE_ACTION, SNOOZE_TOMORROW_ACTION, COMPLETE_ACTION } from '../utils/notification-actions';
 import type { ReminderDeviceStatus } from '../utils/reminder-status';
 import { reminderDateFor } from '../utils/reminder-time';
 
@@ -138,13 +138,15 @@ export async function registerReminderActions() {
   if (Platform.OS === 'web') return;
   await Notifications.setNotificationCategoryAsync(REMINDER_CATEGORY, [
     { identifier: SNOOZE_ACTION, buttonTitle: 'Snooze 1 hour', options: { opensAppToForeground: true } },
+    { identifier: SNOOZE_TOMORROW_ACTION, buttonTitle: 'Tomorrow', options: { opensAppToForeground: true } },
     { identifier: COMPLETE_ACTION, buttonTitle: 'Mark done', options: { opensAppToForeground: true } },
   ]);
 }
 
-export async function scheduleSnoozedReminder(input: { itemId: number; itemName: string; targetDate: string; requestId: string }) {
+export async function scheduleSnoozedReminder(input: { itemId: number; itemName: string; targetDate: string; requestId: string; scheduledFor?: Date }) {
   if (!await requestNotificationPermission()) throw new Error('Enable notifications in Settings before snoozing.');
-  const scheduledFor = new Date(Date.now() + 3600000);
+  const scheduledFor = input.scheduledFor ? new Date(input.scheduledFor) : new Date(Date.now() + 3600000);
+  if (!Number.isFinite(scheduledFor.getTime()) || scheduledFor.getTime() <= Date.now()) throw new Error('Choose a snooze date and time in the future.');
   return Notifications.scheduleNotificationAsync({
     identifier: `duewise_snooze_${input.requestId}`,
     content: {

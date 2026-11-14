@@ -7,6 +7,7 @@ import Settings from 'lucide-react-native/icons/settings';
 import { useCallback, useState } from 'react';
 import { AppState, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import SubscriptionSummary from '@/components/items/SubscriptionSummary';
 import BrandMark from '@/components/brand/BrandMark';
 import ExpiryCard from '@/components/items/ExpiryCard';
 import HomeReminderRow from '@/components/items/HomeReminderRow';
@@ -94,8 +95,8 @@ export default function HomeScreen() {
           </View>
         )}
 
-        <View style={{ marginTop: 16, flexDirection: 'row', backgroundColor: colors.surface, borderRadius: 16,
-          borderWidth: 1, borderColor: colors.border }}>
+        <View style={{ marginTop: 16, flexDirection: 'row', backgroundColor: colors.summarySurface, borderRadius: 20,
+          borderWidth: 1, borderColor: colors.summaryBorder }}>
           <Pressable accessibilityRole="button" accessibilityLabel={`${upcomingCount} reminders in the next 30 days. View items`}
             onPress={() => router.push({ pathname: '/items', params: { status: 'next30' } })}
             style={({ pressed }) => ({ flex: 1, minHeight: 86, paddingHorizontal: 18, paddingVertical: 14, opacity: pressed ? 0.6 : 1 })}>
@@ -111,6 +112,8 @@ export default function HomeScreen() {
             <Text style={{ marginTop: 3, fontSize: 12, lineHeight: 18, color: colors.textSecondary }}>Overdue</Text>
           </Pressable>
         </View>
+
+        <SubscriptionSummary />
 
         {remainingItems.length > 0 ? <View style={{ marginTop: 24 }}>
           <View style={{ marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>

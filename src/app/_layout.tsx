@@ -9,7 +9,7 @@ import * as SystemUI from 'expo-system-ui';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Platform, StyleSheet, Text, View } from 'react-native';
 
-import { COMPLETE_ACTION, reminderActionData } from '@/utils/notification-actions';
+import { COMPLETE_ACTION, SNOOZE_TOMORROW_ACTION, reminderActionData } from '@/utils/notification-actions';
 
 import { seedDefaultCategories } from '@/db/seed';
 import { runWithNotificationRuntime } from '@/utils/notification-runtime';
@@ -17,6 +17,8 @@ import { createNotificationResponseCoordinator } from '@/utils/notification-rout
 import { AppearanceProvider, useAppearance } from '@/contexts/appearance';
 import { useTheme } from '@/hooks/use-theme';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
+import CloudSync from '@/components/CloudSync';
+import HomeWidgetSync from '@/components/HomeWidgetSync';
 
 export default function RootLayout() {
   return <AppearanceProvider><RootLayoutContent /></AppearanceProvider>;
@@ -59,7 +61,8 @@ function RootLayoutContent() {
       if (!data) return;
       const service = await import('@/services/items');
       if (input.actionIdentifier === COMPLETE_ACTION) await service.completeItem(data.itemId, data.targetDate);
-      else await service.snoozeItem(data.itemId, data.targetDate, input.requestIdentifier);
+      else await service.snoozeItem(data.itemId, data.targetDate, input.requestIdentifier,
+        input.actionIdentifier === SNOOZE_TOMORROW_ACTION ? 'tomorrow' : 'hour');
       const Notifications = await import('expo-notifications');
       await Notifications.dismissNotificationAsync(input.requestIdentifier);
       Notifications.clearLastNotificationResponse();
@@ -174,6 +177,8 @@ function RootLayoutContent() {
   }
 
   return <ThemeProvider value={navigationTheme}>
+    <HomeWidgetSync />
+    <CloudSync />
     <StatusBar style={resolvedTheme === 'dark' ? 'light' : 'dark'} />
     <Stack screenOptions={{
       headerShown: false,

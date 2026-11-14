@@ -1,0 +1,64 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { registerHooks } from 'node:module';
+import { randomUUID } from 'node:crypto';
+import './support/register-typescript.mjs';
+import { drizzle } from '../node_modules/drizzle-orm/expo-sqlite/driver.js';
+import { createSqliteItemRepository } from './support/sqlite-item-repository.mjs';
+import { expoSqliteNodeAdapter } from './support/expo-sqlite-node-adapter.mjs';
+const sqlite = createSqliteItemRepository();
+globalThis.__cloudLocalDb = drizzle(expoSqliteNodeAdapter(sqlite.database));
+globalThis.__cloudUUID = randomUUID;
+registerHooks({ resolve(specifier, context, nextResolve) {
+  if (specifier === '@/db') return {url:'data:text/javascript,export const db = globalThis.__cloudLocalDb',shortCircuit:true};
+  if (specifier === 'expo-crypto') return {url:'data:text/javascript,export const randomUUID = globalThis.__cloudUUID',shortCircuit:true};
+  if (specifier === './items') return {url:'data:text/javascript,export const rescheduleItem = async () => ({scheduledReminderCount:0,skippedReminderCount:0})',shortCircuit:true};
+  if (specifier.startsWith('@/')) return nextResolve(new URL('../src/'+specifier.slice(2)+'.ts', import.meta.url).href,context);
+  return nextResolve(specifier,context);
+}});
+const service = await import('../src/services/cloud-local.ts');
+const { restoreBackup, createBackup } = await import('../src/services/backup.ts');
+const item = {name:'Plan',category:null,dateType:'renewal',targetDate:'2099-01-01',reminderTime:'09:00',repeatType:'monthly',repeatInterval:1,importance:'normal',notes:null,archived:false,costMinor:2990,costCurrency:'MYR',attachments:[{name:'receipt.pdf',mimeType:'application/pdf',size:5,base64:'JVBERi0='}],createdAt:'2026-01-01T00:00:00Z',updatedAt:'2026-01-01T00:00:00Z',reminderDays:[0],history:[]};
+const backup = {format:'duewise-backup',version:3,exportedAt:'2026-01-01T00:00:00Z',items:[item]};
+test.beforeEach(() => sqlite.database.exec('DROP TRIGGER IF EXISTS fail_cloud; DELETE FROM items; DELETE FROM cloud_state; DELETE FROM notification_cleanup;'));
+test.after(() => sqlite.close());
+test('first sync deduplicates a restored backup and applies updates without changing local IDs', async () => {
+  await restoreBackup(backup);
+  const id = sqlite.database.prepare('SELECT id FROM items').get().id;
+  const syncId = randomUUID();
+  const local = service.cloudLocalRecords({[syncId]:item});
+  assert.deepEqual(Object.keys(local),[syncId]);
+  sqlite.database.prepare('UPDATE reminders SET notification_id = ?').run('old-device-id');
+  service.applyCloudRecords({[syncId]:{...item,name:'Cloud edit',costMinor:4990}});
+  assert.equal(sqlite.database.prepare('SELECT id FROM items').get().id,id);
+  assert.equal(createBackup().items[0].name,'Cloud edit');
+  assert.equal(createBackup().items[0].costMinor,4990);
+  assert.equal(sqlite.database.prepare('SELECT notification_id FROM reminders').get().notification_id,null);
+  assert.equal(sqlite.database.prepare('SELECT notification_id FROM notification_cleanup').get().notification_id,'old-device-id');
+  assert.equal(createBackup().items[0].attachments[0].base64,'JVBERi0=');
+  assert.deepEqual(service.applyCloudRecords(service.cloudBaseline()),[]);
+});
+test('remote deletions queue cancellation and atomically checkpoint the empty baseline', async () => {
+  await restoreBackup(backup); service.cloudLocalRecords();
+  sqlite.database.prepare('UPDATE reminders SET notification_id = ?').run('cancel-me');
+  service.applyCloudRecords({});
+  assert.equal(createBackup().items.length,0);
+  assert.deepEqual(service.cloudBaseline(),{});
+  assert.equal(sqlite.database.prepare('SELECT notification_id FROM notification_cleanup').get().notification_id,'cancel-me');
+});
+test('a failed apply rolls back reminders, attachments, cleanup and checkpoint', async () => {
+  await restoreBackup(backup); const local=service.cloudLocalRecords(); service.applyCloudRecords(local);
+  const before=JSON.stringify(createBackup().items);
+  sqlite.database.exec("CREATE TRIGGER fail_cloud BEFORE INSERT ON attachments BEGIN SELECT RAISE(ABORT,'injected cloud failure'); END");
+  const syncId=Object.keys(local)[0];
+  assert.throws(() => service.applyCloudRecords({[syncId]:{...item,name:'Must roll back'}}));
+  assert.equal(JSON.stringify(createBackup().items),before);
+  assert.equal(service.cloudBaseline()[syncId].name,'Plan');
+  assert.equal(sqlite.database.prepare('SELECT count(*) AS total FROM notification_cleanup').get().total,0);
+});
+test('cloud inserts and archived state are restored; conflicting IDs remain stable over retries', () => {
+  const id=randomUUID(); service.applyCloudRecords({[id]:{...item,archived:true}});
+  assert.equal(createBackup().items[0].archived,true);
+  assert.deepEqual(JSON.parse(service.readCloudSetting('pendingAlerts')),[]);
+  assert.equal(service.cloudConflictId(id,item),service.cloudConflictId(id,item));
+});

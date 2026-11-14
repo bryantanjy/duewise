@@ -2,19 +2,20 @@
   "expo": {
     "name": "Duewise",
     "slug": "life-reminder",
-    "version": "1.1.0",
+    "version": "1.9.3",
     "orientation": "portrait",
-    "backgroundColor": "#F5F3F8",
+    "backgroundColor": "#F3F5FC",
     "icon": "./assets/images/icon.png",
     "scheme": "lifereminder",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "backgroundColor": "#F5F3F8",
+      "bundleIdentifier": "com.bryan.duewise",
+      "backgroundColor": "#F3F5FC",
       "icon": "./assets/images/icon.png",
       "userInterfaceStyle": "automatic"
     },
     "android": {
-      "backgroundColor": "#F5F3F8",
+      "backgroundColor": "#F3F5FC",
       "adaptiveIcon": {
         "backgroundColor": "#3B3468",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -28,7 +29,9 @@
       "blockedPermissions": [
         "android.permission.SYSTEM_ALERT_WINDOW",
         "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE"
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_CALENDAR",
+        "android.permission.WRITE_CALENDAR"
       ]
     },
     "web": {
@@ -52,7 +55,7 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 94,
           "dark": {
-            "backgroundColor": "#0B0A0F",
+            "backgroundColor": "#10151D",
             "image": "./assets/images/splash-icon.png"
           }
         }
@@ -62,11 +65,66 @@
       [
         "expo-notifications",
         {
-          "color": "#5B50C5",
+          "color": "#3B3468",
           "defaultChannel": "duewise-reminders"
         }
       ],
-      "./plugins/with-private-backups"
+      "./plugins/with-private-backups",
+      [
+        "react-native-android-widget",
+        {
+          "widgets": [
+            {
+              "name": "DuewiseUpcoming",
+              "label": "Duewise",
+              "description": "Upcoming reminders and overdue count",
+              "minWidth": "250dp",
+              "minHeight": "180dp",
+              "targetCellWidth": 4,
+              "targetCellHeight": 3,
+              "resizeMode": "horizontal|vertical",
+              "widgetCategory": "home_screen|not_keyguard",
+              "updatePeriodMillis": 1800000
+            }
+          ]
+        }
+      ],
+      [
+        "expo-widgets",
+        {
+          "bundleIdentifier": "com.bryan.duewise.widgets",
+          "groupIdentifier": "group.com.bryan.duewise",
+          "widgets": [
+            {
+              "name": "DuewiseUpcoming",
+              "displayName": "Duewise",
+              "description": "Upcoming reminders and overdue count",
+              "ios": {
+                "supportedFamilies": [
+                  "systemSmall",
+                  "systemMedium",
+                  "systemLarge"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      [
+        "expo-calendar",
+        {
+          "writeOnlyAccess": true,
+          "calendarPermission": "Allow Duewise to add the reminders you choose to your calendar.",
+          "writeOnlyCalendarPermission": "Allow Duewise to add the reminders you choose to your calendar.",
+          "remindersPermission": false
+        }
+      ],
+      [
+        "expo-secure-store",
+        {
+          "configureAndroidBackup": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

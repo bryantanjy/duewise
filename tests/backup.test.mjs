@@ -25,7 +25,7 @@ test('malformed JSON, future versions and invalid dates/times/intervals are reje
   for (const fields of [{ targetDate: '2027-02-29' }, { reminderTime: '24:00' }, { repeatInterval: 0 }, { reminderDays: [-1] }, { archived: 'false' }]) {
     assert.throws(() => parseBackup(JSON.stringify(backup([{ ...item, ...fields }]))), /invalid or missing/);
   }
-  assert.throws(() => parseBackup(' '.repeat(MAX_BACKUP_BYTES + 1)), /10 MB/);
+  assert.throws(() => parseBackup(' '.repeat(MAX_BACKUP_BYTES + 1)), /50 MB/);
 });
 
 test('preview skips matching reminders and in-file duplicates without merging different records', () => {

@@ -7,6 +7,7 @@ import Check from 'lucide-react-native/icons/check';
 import ChevronDown from 'lucide-react-native/icons/chevron-down';
 import SlidersHorizontal from 'lucide-react-native/icons/sliders-horizontal';
 import { useTheme } from '@/hooks/use-theme';
+import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { DEFAULT_ITEM_FILTERS, SORT_OPTIONS, STATUS_FILTERS, type ItemListFilters } from '@/utils/item-list';
 
 export type FilterCategory = { id: number; name: string; count: number };
@@ -17,6 +18,7 @@ type Props = {
 export default function ItemListControls({ filters, onChange, resultCount, totalCount, categories, isLoading }: Props) {
   const colors = useTheme();
   const insets = useSafeAreaInsets();
+  const reducedMotion = useReducedMotion();
   const [sheet, setSheet] = useState<'filters' | 'sort'>();
   const selectedCategory = categories.find((category) => category.id === filters.category);
   const activeFilters = [
@@ -38,7 +40,7 @@ export default function ItemListControls({ filters, onChange, resultCount, total
           onChangeText={(query) => onChange({ ...filters, query })}
           style={{ flex: 1, minWidth: 0, minHeight: 50, paddingHorizontal: 10, paddingVertical: 12, fontSize: 14, lineHeight: 22, color: colors.text }} />
         {filters.query ? <Pressable accessibilityRole="button" accessibilityLabel="Clear search" onPress={() => onChange({ ...filters, query: '' })}
-          style={{ minHeight: 48, width: 42, justifyContent: 'center', alignItems: 'center' }}><X size={16} color={colors.textSecondary} /></Pressable> : null}
+          style={({ pressed }) => ({ minHeight: 48, width: 48, justifyContent: 'center', alignItems: 'center', opacity: pressed ? 0.6 : 1 })}><X size={16} color={colors.textSecondary} /></Pressable> : null}
       </View>
       <Pressable accessibilityRole="button" accessibilityLabel={`Filters${activeFilters.length ? `, ${activeFilters.length} active` : ''}`}
         accessibilityState={{ expanded: sheet === 'filters' }} onPress={() => openSheet('filters')}
@@ -66,11 +68,11 @@ export default function ItemListControls({ filters, onChange, resultCount, total
       </Pressable>
     </View>
 
-    <Modal visible={Boolean(sheet)} transparent animationType="slide" onRequestClose={() => setSheet(undefined)}>
+    <Modal visible={Boolean(sheet)} transparent animationType={reducedMotion ? 'none' : 'slide'} onRequestClose={() => setSheet(undefined)}>
       <View style={{ flex: 1, justifyContent: 'flex-end', paddingTop: insets.top + 20 }}>
         <Pressable accessibilityRole="button" accessibilityLabel="Close filters and sorting" onPress={() => setSheet(undefined)}
           style={{ position: 'absolute', inset: 0, backgroundColor: colors.shadow, opacity: 0.65 }} />
-        <View accessibilityViewIsModal style={{ maxHeight: '100%', backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: Math.max(insets.bottom, 16) }}>
+        <View accessibilityViewIsModal style={{ maxHeight: '100%', backgroundColor: colors.surfaceRaised, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: Math.max(insets.bottom, 16) }}>
           <View style={{ paddingLeft: 22, paddingRight: 12, paddingTop: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <Text accessibilityRole="header" style={{ fontSize: 19, lineHeight: 27, fontWeight: '600', color: colors.text }}>{sheet === 'sort' ? 'Sort reminders' : 'Filter reminders'}</Text>
             <Pressable accessibilityRole="button" accessibilityLabel="Close filters and sorting" onPress={() => setSheet(undefined)}
@@ -78,7 +80,7 @@ export default function ItemListControls({ filters, onChange, resultCount, total
           </View>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 22, paddingBottom: 20 }}>
             {sheet === 'sort' ? <View style={{ marginTop: 8 }}>
-              {SORT_OPTIONS.map((option) => <Pressable key={option.value} accessibilityRole="radio" accessibilityState={{ selected: filters.sort === option.value }}
+              {SORT_OPTIONS.map((option) => <Pressable key={option.value} accessibilityRole="radio" accessibilityState={{ checked: filters.sort === option.value }}
                 onPress={() => { onChange({ ...filters, sort: option.value }); setSheet(undefined); }}
                 style={({ pressed }) => ({ minHeight: 54, paddingHorizontal: 12, paddingVertical: 13, marginBottom: 6, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12,
                   borderRadius: 12, backgroundColor: filters.sort === option.value ? colors.primarySoft : pressed ? colors.surfaceInset : colors.surface })}>
@@ -120,7 +122,7 @@ function Choices<T extends string | number>({ title, value, options, onSelect }:
   return <View style={{ marginTop: 18 }}>
     <Text accessibilityRole="header" style={{ marginBottom: 8, fontSize: 13, lineHeight: 20, fontWeight: '500', color: colors.textSecondary }}>{title}</Text>
     <View accessibilityRole="radiogroup" accessibilityLabel={title} style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-      {options.map((option) => <Pressable key={option.value} accessibilityRole="radio" accessibilityState={{ selected: value === option.value }}
+      {options.map((option) => <Pressable key={option.value} accessibilityRole="radio" accessibilityState={{ checked: value === option.value }}
         onPress={() => onSelect(option.value)} style={({ pressed }) => ({ minHeight: 48, paddingHorizontal: 12, paddingVertical: 10, justifyContent: 'center', borderRadius: 12, borderWidth: 1,
           borderColor: value === option.value ? colors.primary : colors.border,
           backgroundColor: value === option.value ? colors.primarySoft : pressed ? colors.surfaceInset : colors.surface })}>

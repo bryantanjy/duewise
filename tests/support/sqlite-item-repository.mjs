@@ -13,7 +13,7 @@ export function createSqliteItemRepository() {
       id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
       category_id INTEGER REFERENCES categories(id), date_type TEXT NOT NULL,
       target_date TEXT NOT NULL, reminder_time TEXT NOT NULL DEFAULT '09:00', repeat_interval INTEGER NOT NULL DEFAULT 1, repeat_type TEXT NOT NULL DEFAULT 'none',
-      importance TEXT NOT NULL DEFAULT 'normal', notes TEXT,
+      importance TEXT NOT NULL DEFAULT 'normal', sync_id TEXT, cost_minor INTEGER, cost_currency TEXT, notes TEXT,
       archived INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
     );
     CREATE TABLE reminders (
@@ -26,6 +26,11 @@ export function createSqliteItemRepository() {
       item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
       previous_date TEXT, new_date TEXT, action TEXT NOT NULL, created_at TEXT NOT NULL
     );
+    CREATE TABLE attachments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+      name TEXT NOT NULL, mime_type TEXT NOT NULL, size INTEGER NOT NULL, base64 TEXT NOT NULL
+    );
+    CREATE TABLE cloud_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     CREATE TABLE notification_cleanup (
       id INTEGER PRIMARY KEY AUTOINCREMENT, notification_id TEXT NOT NULL UNIQUE,
       attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT, created_at TEXT NOT NULL

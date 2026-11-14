@@ -97,7 +97,7 @@ export default function CalendarScreen() {
       <Text accessibilityRole="header" style={{ color: colors.text, fontSize: 26, lineHeight: 34, fontWeight: '600', letterSpacing: -0.8 }}>Calendar</Text>
       <Pressable accessibilityRole="button" accessibilityLabel="Add reminder for selected date" onPress={addReminder}
         style={({ pressed }) => ({ width: 48, height: 48, borderRadius: 24, backgroundColor: colors.primaryFill, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.75 : 1 })}>
-        <Plus color="#FFFFFF" size={23} strokeWidth={2} />
+        <Plus color={colors.onPrimary} size={23} strokeWidth={2} />
       </Pressable>
     </View>
     <FlatList data={error ? [] : selectedItems} keyExtractor={item => String(item.id)} initialNumToRender={10}
@@ -121,7 +121,7 @@ export default function CalendarScreen() {
                 accessibilityLabel={`${new Intl.DateTimeFormat(undefined, { dateStyle: 'full' }).format(date)}${today ? ', today' : ''}, ${count} ${count === 1 ? 'reminder' : 'reminders'}`}
                 onPress={() => selectDate(date)} style={({ pressed }) => ({ width: '14.2857%', minHeight: 52, paddingVertical: 4, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}>
                 <View style={{ width: 34, minHeight: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: selected ? colors.primaryFill : today ? colors.primarySoft : 'transparent', borderWidth: today && !selected ? 1 : 0, borderColor: colors.primary }}>
-                  <Text style={{ fontSize: 14, lineHeight: 24, fontWeight: selected || today ? '600' : '400', color: selected ? '#FFFFFF' : today ? colors.primary : colors.text, opacity: !currentMonth && !selected ? 0.4 : 1, fontVariant: ['tabular-nums'] }}>{date.getDate()}</Text>
+                  <Text style={{ fontSize: 14, lineHeight: 24, fontWeight: selected || today ? '600' : '400', color: selected ? colors.onPrimary : today ? colors.primary : colors.text, opacity: !currentMonth && !selected ? 0.4 : 1, fontVariant: ['tabular-nums'] }}>{date.getDate()}</Text>
                 </View>
                 <View style={{ height: 6, marginTop: 3, alignItems: 'center', justifyContent: 'center' }}>
                   {count > 0 ? <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: colors.primary, opacity: currentMonth ? 1 : 0.4 }} /> : null}

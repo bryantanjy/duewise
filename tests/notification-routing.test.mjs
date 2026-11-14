@@ -130,3 +130,15 @@ test('failed notification actions report errors and do not block the next action
   assert.deepEqual(actions, ['one', 'two']);
   assert.deepEqual(errors, ['Failure']);
 });
+
+test('tomorrow notification action is queued until ready and deduplicated', async () => {
+  const actions = [];
+  const coordinator = createNotificationResponseCoordinator(() => assert.fail('must not navigate'), async (input) => actions.push(input.actionIdentifier));
+  const input = { actionIdentifier: 'duewise_snooze_tomorrow', data: { type: 'item-reminder', itemId: 4, targetDate: '2027-01-01' }, defaultActionIdentifier: 'default', requestIdentifier: 'tomorrow' };
+  coordinator.handleResponse(input);
+  coordinator.handleResponse(input);
+  assert.deepEqual(actions, []);
+  coordinator.setReady(true);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(actions, ['duewise_snooze_tomorrow']);
+});

@@ -23,7 +23,7 @@ const item = {
 };
 const backup = (items = [item]) => ({ format: 'duewise-backup', version: 1, exportedAt: '2026-10-24T00:00:00Z', items });
 test.beforeEach(() => {
-  sqlite.database.exec('DROP TRIGGER IF EXISTS fail_backup; DELETE FROM items; DELETE FROM categories WHERE id != 1;');
+  sqlite.database.exec('DROP TRIGGER IF EXISTS fail_backup; DROP TRIGGER IF EXISTS fail_attachment; DELETE FROM items; DELETE FROM categories WHERE id != 1;');
   globalThis.__backupReschedule = async (id) => ({ itemId: id, scheduledReminderCount: 2, skippedReminderCount: 0 });
 });
 test.after(() => sqlite.close());
@@ -63,6 +63,35 @@ test('export excludes device notification IDs, cleanup data, and temporary snooz
   assert.equal(createBackup().items[0].history.length, 1);
 });
 
+test('version 2 backup round trip retains attachments, remaps owners and skips duplicate imports', async () => {
+  const attached = { ...item, attachments: [{ name: 'receipt.pdf', mimeType: 'application/pdf', size: 5, base64: 'JVBERi0=' }] };
+  await restoreBackup({ ...backup([attached]), version: 2 });
+  const exported = createBackup();
+  assert.equal(exported.version, 3);
+  assert.deepEqual(exported.items[0].attachments, attached.attachments);
+  assert.equal((await restoreBackup(exported)).imported, 0);
+  sqlite.database.exec('DELETE FROM items;');
+  await restoreBackup(exported);
+  const row = sqlite.database.prepare('SELECT * FROM attachments').get();
+  assert.equal(row.item_id, sqlite.database.prepare('SELECT id FROM items').get().id);
+  assert.equal(row.base64, 'JVBERi0=');
+  assert.deepEqual(createBackup().items[0].attachments, attached.attachments);
+});
+
+test('invalid attachment payload rejects the complete restore before writing any item', async () => {
+  await assert.rejects(restoreBackup({ ...backup([{ ...item, attachments: [{ name: '../bad.pdf', mimeType: 'application/pdf', size: 5, base64: 'JVBERi0=' }] }]), version: 2 }));
+  assert.equal(sqlite.database.prepare('SELECT count(*) AS total FROM items').get().total, 0);
+});
+
+test('attachment write failure rolls back all imported reminders and categories', async () => {
+  sqlite.database.exec("CREATE TRIGGER fail_attachment BEFORE INSERT ON attachments BEGIN SELECT RAISE(ABORT, 'attachment write failed'); END");
+  const attached = { ...item, name: 'With document', attachments: [{ name: 'receipt.pdf', mimeType: 'application/pdf', size: 5, base64: 'JVBERi0=' }] };
+  await assert.rejects(restoreBackup({ ...backup([item, attached]), version: 2 }), error => String(error.cause).includes('attachment write failed'));
+  assert.equal(sqlite.database.prepare('SELECT count(*) AS total FROM items').get().total, 0);
+  assert.equal(sqlite.database.prepare('SELECT count(*) AS total FROM attachments').get().total, 0);
+  assert.equal(sqlite.database.prepare("SELECT count(*) AS total FROM categories WHERE name = 'Custom'").get().total, 0);
+});
+
 test('database failure rolls back the entire import including categories and schedules nothing', async () => {
   const scheduled = [];
   globalThis.__backupReschedule = async (id) => { scheduled.push(id); };
@@ -80,4 +109,19 @@ test('notification failure keeps imported records and reports unscheduled alerts
   assert.equal(result.unscheduled, 2);
   assert.equal(sqlite.database.prepare('SELECT count(*) AS total FROM items').get().total, 1);
   assert.equal(previewBackup(backup()).duplicates, 1);
+});
+
+test('cost backup round trip preserves cents and currency; legacy imports have no cost', async () => {
+  await restoreBackup({ ...backup([{...item, costMinor: 2990, costCurrency: 'MYR'}]), version: 3 });
+  const exported = createBackup();
+  assert.equal(exported.items[0].costMinor, 2990);
+  assert.equal(exported.items[0].costCurrency, 'MYR');
+  assert.equal((await restoreBackup(exported)).duplicates, 1);
+  sqlite.database.exec('DELETE FROM items');
+  await restoreBackup(exported);
+  assert.equal(createBackup().items[0].costMinor, 2990);
+  sqlite.database.exec('DELETE FROM items');
+  await restoreBackup(backup());
+  assert.equal(createBackup().items[0].costMinor, null);
+  await assert.rejects(restoreBackup({...backup([{...item, costMinor: 10}]), version: 3}));
 });

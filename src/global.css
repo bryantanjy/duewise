@@ -2,22 +2,22 @@
 @import 'uniwind';
 
 /* Semantic utilities keep Uniwind and native controls on the same palette. */
-@utility bg-app-bg { background-color: light-dark(#F5F3F8, #0B0A0F); }
-@utility bg-app-surface { background-color: light-dark(#FFFFFF, #15131B); }
-@utility bg-app-text { background-color: light-dark(#18151F, #F7F4FB); }
-@utility bg-app-primary { background-color: light-dark(#5A49CF, #7665E7); }
-@utility bg-app-primary-soft { background-color: light-dark(#EEEAFB, #28223F); }
-@utility bg-app-danger-soft { background-color: light-dark(#FCE8ED, #351B24); }
-@utility bg-app-warning-soft { background-color: light-dark(#FBF0DA, #332817); }
-@utility bg-app-success-soft { background-color: light-dark(#E2F3EB, #153226); }
+@utility bg-app-bg { background-color: light-dark(#F3F5FC, #10151D); }
+@utility bg-app-surface { background-color: light-dark(#FFFFFF, #1A212D); }
+@utility bg-app-text { background-color: light-dark(#182C49, #F1F4FF); }
+@utility bg-app-primary { background-color: light-dark(#4445BB, #625DDA); }
+@utility bg-app-primary-soft { background-color: light-dark(#E7E7FF, #2C3051); }
+@utility bg-app-danger-soft { background-color: light-dark(#F9E5E7, #57354F); }
+@utility bg-app-warning-soft { background-color: light-dark(#F6EAD2, #574637); }
+@utility bg-app-success-soft { background-color: light-dark(#E2EEE5, #304E50); }
 
-@utility text-app-text { color: light-dark(#18151F, #F7F4FB); }
-@utility text-app-muted { color: light-dark(#696575, #AAA4B5); }
-@utility text-app-primary { color: light-dark(#6656D9, #B3A6FF); }
-@utility text-app-danger { color: light-dark(#BD3153, #FF8197); }
-@utility text-app-warning { color: light-dark(#986216, #F2BF64); }
-@utility text-app-success { color: light-dark(#147D5A, #55D6A2); }
+@utility text-app-text { color: light-dark(#182C49, #F1F4FF); }
+@utility text-app-muted { color: light-dark(#55647E, #AAB7CE); }
+@utility text-app-primary { color: light-dark(#4445BB, #ACA6FF); }
+@utility text-app-danger { color: light-dark(#A12D46, #FFA7B6); }
+@utility text-app-warning { color: light-dark(#855717, #F0C78C); }
+@utility text-app-success { color: light-dark(#276C51, #A2DEC2); }
 
-@utility border-app-border { border-color: light-dark(#E3DEE9, #2D2938); }
-@utility border-app-primary { border-color: light-dark(#6656D9, #B3A6FF); }
-@utility border-app-danger { border-color: light-dark(#BD3153, #FF8197); }
+@utility border-app-border { border-color: light-dark(#DCE2F0, #354054); }
+@utility border-app-primary { border-color: light-dark(#4445BB, #ACA6FF); }
+@utility border-app-danger { border-color: light-dark(#A12D46, #FFA7B6); }

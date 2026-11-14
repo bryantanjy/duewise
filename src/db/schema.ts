@@ -20,6 +20,7 @@ export const items = sqliteTable('items', {
   id: integer('id').primaryKey({ autoIncrement: true }),
 
   name: text('name').notNull(),
+  syncId: text('sync_id'),
 
   categoryId: integer('category_id')
     .references(() => categories.id),
@@ -41,6 +42,8 @@ export const items = sqliteTable('items', {
     .default('normal'),
 
   notes: text('notes'),
+  costMinor: integer('cost_minor'),
+  costCurrency: text('cost_currency'),
 
   archived: integer('archived', {
     mode: 'boolean',
@@ -107,4 +110,18 @@ export const notificationCleanup = sqliteTable('notification_cleanup', {
   createdAt: text('created_at')
     .notNull()
     .$defaultFn(() => new Date().toISOString()),
+});
+
+export const attachments = sqliteTable('attachments', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  itemId: integer('item_id').notNull().references(() => items.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  mimeType: text('mime_type').notNull(),
+  size: integer('size').notNull(),
+  base64: text('base64').notNull(),
+});
+
+export const cloudState = sqliteTable('cloud_state', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
 });

@@ -1,5 +1,6 @@
 export const REMINDER_CATEGORY = 'duewise_reminder';
 export const SNOOZE_ACTION = 'duewise_snooze_hour';
+export const SNOOZE_TOMORROW_ACTION = 'duewise_snooze_tomorrow';
 export const COMPLETE_ACTION = 'duewise_complete';
 
 export function reminderActionData(data: unknown) {

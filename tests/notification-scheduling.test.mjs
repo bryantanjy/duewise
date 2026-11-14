@@ -41,7 +41,7 @@ test('scheduled reminders include native actions, the chosen local time, and occ
   assert.equal(request.content.categoryIdentifier, 'duewise_reminder');
   assert.equal(request.content.data.targetDate, '2099-01-02');
   assert.equal(request.content.data.scheduledFor, request.trigger.date.toISOString());
-  assert.deepEqual(globalThis.__categories[0].actions.map((action) => action.identifier), ['duewise_snooze_hour', 'duewise_complete']);
+  assert.deepEqual(globalThis.__categories[0].actions.map((action) => action.identifier), ['duewise_snooze_hour', 'duewise_snooze_tomorrow', 'duewise_complete']);
 });
 
 test('snooze schedules one hour ahead and includes actions again', async () => {
@@ -52,6 +52,22 @@ test('snooze schedules one hour ahead and includes actions again', async () => {
   assert.ok(request.trigger.date.getTime() >= before + 3600000);
   assert.ok(request.trigger.date.getTime() <= Date.now() + 3600000);
   assert.equal(request.content.categoryIdentifier, 'duewise_reminder');
+});
+
+test('custom snooze schedules the chosen instant without changing occurrence identity', async () => {
+  const scheduledFor = new Date('2099-02-03T10:15:00Z');
+  await service.scheduleSnoozedReminder({ itemId: 2, itemName: 'Passport', targetDate: '2099-01-02', requestId: 'custom', scheduledFor });
+  const request = globalThis.__scheduled[0];
+  assert.equal(request.trigger.date.toISOString(), scheduledFor.toISOString());
+  assert.equal(request.content.data.targetDate, '2099-01-02');
+  assert.equal(request.content.data.scheduledFor, scheduledFor.toISOString());
+});
+
+test('invalid custom snoozes never reach the native scheduler', async () => {
+  for (const scheduledFor of [new Date('2000-01-01'), new Date(NaN)]) {
+    await assert.rejects(service.scheduleSnoozedReminder({ itemId: 2, itemName: 'Passport', targetDate: '2099-01-02', requestId: 'invalid', scheduledFor }), /future/);
+  }
+  assert.equal(globalThis.__scheduled.length, 0);
 });
 
 test('permission denial and past times never claim to schedule a notification', async () => {

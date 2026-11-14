@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import { parseStoredDate } from './item-form';
+import { attachmentSchema } from './attachments';
+import { COST_CURRENCIES, MAX_COST_MINOR } from './subscription-cost';
 
-export const MAX_BACKUP_BYTES = 10 * 1024 * 1024;
+export const MAX_BACKUP_BYTES = 50 * 1024 * 1024;
 const date = z.string().refine((value) => Boolean(parseStoredDate(value)), 'Invalid calendar date');
 const timestamp = z.string().datetime({ offset: true });
 const backupItemSchema = z.object({
@@ -14,15 +16,18 @@ const backupItemSchema = z.object({
   repeatInterval: z.number().int().min(1).max(3650),
   importance: z.enum(['low', 'normal', 'high']),
   notes: z.string().max(100000).nullable(),
+  costMinor: z.number().int().min(0).max(MAX_COST_MINOR).nullable().optional(),
+  costCurrency: z.enum(COST_CURRENCIES).nullable().optional(),
+  attachments: z.array(attachmentSchema).max(5).optional(),
   archived: z.boolean(),
   createdAt: timestamp,
   updatedAt: timestamp,
   reminderDays: z.array(z.number().int().min(0).max(3650)).max(3651).transform((values) => [...new Set(values)].sort((a, b) => b - a)),
   history: z.array(z.object({ action: z.string().min(1).max(100), previousDate: date.nullable(), newDate: date.nullable(), createdAt: timestamp })).max(10000),
-});
+}).refine(item => (item.costMinor == null) === (item.costCurrency == null), 'Cost and currency must be supplied together');
 export const backupSchema = z.object({
   format: z.literal('duewise-backup'),
-  version: z.literal(1),
+  version: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   exportedAt: timestamp,
   items: z.array(backupItemSchema).max(10000),
 });
@@ -30,10 +35,10 @@ export type Backup = z.infer<typeof backupSchema>;
 export type BackupItem = Backup['items'][number];
 
 export function parseBackup(text: string): Backup {
-  if (new TextEncoder().encode(text).byteLength > MAX_BACKUP_BYTES) throw new Error('Backup files must be smaller than 10 MB.');
+  if (new TextEncoder().encode(text).byteLength > MAX_BACKUP_BYTES) throw new Error('Backup files must be smaller than 50 MB.');
   let value: unknown;
   try { value = JSON.parse(text); } catch { throw new Error('This file is not valid JSON. Choose a Duewise backup.'); }
-  if (value && typeof value === 'object' && 'version' in value && value.version !== 1) throw new Error('This backup version is not supported. Update Duewise and try again.');
+  if (value && typeof value === 'object' && 'version' in value && value.version !== 1 && value.version !== 2 && value.version !== 3) throw new Error('This backup version is not supported. Update Duewise and try again.');
   const result = backupSchema.safeParse(value);
   if (!result.success) throw new Error('This backup contains invalid or missing reminder data. Nothing has been restored.');
   return result.data;
@@ -45,8 +50,10 @@ export function backupItemKey(item: BackupItem) {
   return JSON.stringify([
     item.createdAt, item.name, item.category?.name ?? null, item.dateType, item.targetDate,
     item.reminderTime, item.repeatType, item.repeatInterval, item.importance, item.notes,
+    item.costMinor ?? null, item.costCurrency ?? null,
     item.archived, [...item.reminderDays].sort((a, b) => b - a),
     item.history.map((entry) => JSON.stringify([entry.action, entry.previousDate, entry.newDate, entry.createdAt])).sort(),
+    (item.attachments ?? []).map((entry) => JSON.stringify([entry.name, entry.mimeType, entry.size, entry.base64])).sort(),
   ]);
 }
 

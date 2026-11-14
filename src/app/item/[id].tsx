@@ -3,14 +3,18 @@ import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { router, useLocalSearchParams } from 'expo-router';
 import ChevronLeft from 'lucide-react-native/icons/chevron-left';
 import { useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Share, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ItemDetailsContent, { type DetailAction } from '@/components/items/ItemDetailsContent';
+import SnoozeSheet from '@/components/items/SnoozeSheet';
+import AttachmentSection from '@/components/items/AttachmentSection';
+import type { SnoozeChoice } from '@/utils/snooze';
 import { useReminderStatus } from '@/hooks/use-reminder-status';
 import { openNotificationSettings } from '@/services/notification-settings';
 import { useTheme } from '@/hooks/use-theme';
 import { nextScheduledReminder } from '@/utils/reminder-status';
 import { formatDateForDisplay } from '@/utils/item-form';
+import { reminderShareContent } from '@/utils/share-reminder';
 import { reminderDateFor } from '@/utils/reminder-time';
 import { buildRenewalHistoryModel } from '@/utils/item-history-model';
 import { db } from '@/db';
@@ -33,6 +37,7 @@ export default function ItemDetailsScreen() {
   const actionLock = useRef(false);
   const [feedback, setFeedback] = useState<string>();
   const [checkVersion, setCheckVersion] = useState(0);
+  const [showSnooze, setShowSnooze] = useState(false);
   const itemId = Number(id);
   const safeItemId = Number.isSafeInteger(itemId) && itemId > 0 ? itemId : -1;
   const itemQuery = useMemo(
@@ -47,6 +52,7 @@ export default function ItemDetailsScreen() {
           importance: items.importance,
           name: items.name,
           notes: items.notes,
+          costMinor: items.costMinor, costCurrency: items.costCurrency,
           repeatType: items.repeatType,
           repeatInterval: items.repeatInterval,
           targetDate: items.targetDate,
@@ -160,16 +166,33 @@ export default function ItemDetailsScreen() {
         scheduled: String(result.scheduledReminderCount), skipped: String(result.skippedReminderCount) } });
     });
   }
-  function handleSnooze() {
+  function handleSnooze(choice: SnoozeChoice) {
+    setShowSnooze(false);
     void runAction('snooze', async () => {
-      await snoozeItem(item.id, item.targetDate, `manual_${item.id}_${Date.now()}`);
-      setFeedback('Snoozed. An extra alert is scheduled in 1 hour.');
+      const scheduledFor = await snoozeItem(item.id, item.targetDate, `manual_${item.id}_${Date.now()}`, choice);
+      if (!scheduledFor) throw new Error('This reminder has changed. Reopen it before snoozing.');
+      setFeedback(`Snoozed until ${scheduledFor.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}. Your due date is unchanged.`);
+      setCheckVersion(value => value + 1);
     });
   }
   function handleRefresh() {
     void runAction('refresh', async () => {
       const result = await rescheduleItem(item.id);
       setFeedback(`${result.scheduledReminderCount} alerts scheduled.${result.skippedReminderCount ? ` ${result.skippedReminderCount} alerts were skipped because their times have passed or permission is unavailable.` : ''}`);
+    });
+  }
+  function handleShare(anchor?: number) {
+    void runAction('share', async () => {
+      if (Platform.OS === 'web') throw new Error('Sharing reminders is available in the Android and iOS app.');
+      const content = reminderShareContent(item);
+      await Share.share(content, { dialogTitle: 'Share reminder', subject: content.title, ...(anchor ? { anchor } : {}) });
+    });
+  }
+  function handleCalendarExport() {
+    void runAction('calendar', async () => {
+      const { exportReminderToCalendar } = await import('@/services/calendar-export');
+      const message = await exportReminderToCalendar(item);
+      if (message) setFeedback(message);
     });
   }
   const saved = created === '1' || updated === '1' || renewed === '1' || restored === '1';
@@ -188,10 +211,15 @@ export default function ItemDetailsScreen() {
         </View>
         <ItemDetailsContent item={item} reminders={reminderRows} history={historyModels} deviceStatus={deviceStatus}
           nextReminder={nextReminder} activeAction={activeAction} error={actionError} message={feedback ?? savedMessage}
+          onDuplicate={() => router.push({ pathname: '/item/new', params: { copyId: String(item.id) } })}
           onComplete={handleComplete} onRestore={handleRestore} onEdit={() => edit()} onReschedule={() => edit('schedule')}
-          onCheckSchedule={() => setCheckVersion(value => value + 1)} onSnooze={handleSnooze} onRefresh={handleRefresh} onArchive={confirmArchive} onDelete={confirmDelete}
+          onShare={handleShare}
+          onCalendarExport={handleCalendarExport}
+          attachmentContent={<AttachmentSection itemId={item.id} />}
+          onCheckSchedule={() => setCheckVersion(value => value + 1)} onSnooze={() => setShowSnooze(true)} onRefresh={handleRefresh} onArchive={confirmArchive} onDelete={confirmDelete}
           onSettings={() => { void openNotificationSettings().catch(() => setActionError('Open device settings to enable notifications.')); }} />
       </View>
     </ScrollView>
+    {showSnooze ? <SnoozeSheet reminderTime={item.reminderTime} onClose={() => setShowSnooze(false)} onConfirm={handleSnooze} /> : null}
   </SafeAreaView>;
 }

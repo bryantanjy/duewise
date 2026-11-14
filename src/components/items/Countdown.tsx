@@ -96,7 +96,7 @@ export default function Countdown({
         <View style={{ alignItems: 'center', justifyContent: 'center' }}>
           <Text
             style={{
-              color: isOverdue ? colors.danger : inverse ? colors.onPrimary : colors.text,
+              color: isOverdue ? colors.danger : inverse ? colors.heroText : colors.text,
               fontSize: size > 80 ? 26 : size > 60 ? 20 : 16,
               fontWeight: '800',
               fontVariant: ['tabular-nums'],

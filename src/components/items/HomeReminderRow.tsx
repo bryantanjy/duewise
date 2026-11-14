@@ -18,7 +18,7 @@ export default function HomeReminderRow({ item, onPress, showDivider }: Props) {
       minHeight: 88, flexDirection: 'row', alignItems: 'center', gap: 14,
       borderTopWidth: showDivider ? 1 : 0, borderTopColor: colors.border,
       backgroundColor: pressed ? colors.surfaceInset : colors.surface })}>
-    <View style={{ width: 34, alignItems: 'center' }}>
+    <View style={{ width: 46, minHeight: 56, paddingVertical: 6, borderRadius: 12, backgroundColor: colors.dateTile, alignItems: 'center', justifyContent: 'center' }}>
       <Text style={{ fontSize: 10, lineHeight: 16, letterSpacing: 0.8, color: colors.textSecondary }}>{formatMonth(item.targetDate)}</Text>
       <Text style={{ fontSize: 23, lineHeight: 29, letterSpacing: -0.5, fontWeight: '500', color: colors.text, fontVariant: ['tabular-nums'] }}>{formatDay(item.targetDate)}</Text>
     </View>
